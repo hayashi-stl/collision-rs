@@ -148,12 +148,7 @@ where
             right_transform,
             closest_edge,
         )?;
-        let n = left.closest_valid_normal_local(
-            &left_transform
-                .inverse_transform_vector(e.normal)
-                .unwrap_or(e.normal)
-                .normalize(),
-        );
+        let n = left.closest_valid_normal(&e.normal, left_transform);
 
         if ulps_ne!(e.normal, n) {
             e = self.0.closest_edge(

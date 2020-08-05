@@ -30,7 +30,13 @@ pub struct Contact<P: EuclideanSpace> {
     /// The collision normal. Only applicable if the collision strategy is not `CollisionOnly`
     pub normal: P::Diff,
 
+    /// The direction the collision is resolved in. Only applicable if the collision strategy
+    /// is not `CollisionOnly`
+    /// If the EPA used is not `EPAFn3`, this is the same as the normal.
+    pub resolve_dir: P::Diff,
+
     /// The penetration depth. Only applicable if the collision strategy is not `CollisionOnly`
+    /// This is based on `resolve_dir`, not `normal`, though that's relevant only for `EPAFn3`.
     pub penetration_depth: P::Scalar,
 
     /// The contact point. Only applicable if the collision strategy is not `CollisionOnly`
@@ -61,6 +67,25 @@ where
     }
 
     /// Create a new contact manifold, complete with contact point
+    /// and differing normal and resolve direction
+    pub fn new_with_point_and_resolve_dir(
+        strategy: CollisionStrategy,
+        normal: P::Diff,
+        resolve_dir: P::Diff,
+        penetration_depth: P::Scalar,
+        contact_point: P,
+    ) -> Self {
+        Self {
+            strategy,
+            normal,
+            resolve_dir,
+            penetration_depth,
+            contact_point,
+            time_of_impact: P::Scalar::zero(),
+        }
+    }
+
+    /// Create a new contact manifold, complete with contact point
     pub fn new_with_point(
         strategy: CollisionStrategy,
         normal: P::Diff,
@@ -70,6 +95,7 @@ where
         Self {
             strategy,
             normal,
+            resolve_dir: normal,
             penetration_depth,
             contact_point,
             time_of_impact: P::Scalar::zero(),

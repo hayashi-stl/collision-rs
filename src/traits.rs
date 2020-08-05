@@ -1,5 +1,6 @@
 use cgmath::prelude::*;
 use cgmath::BaseNum;
+use cgmath::{RelativeEq, UlpsEq, BaseFloat};
 
 /// An intersection test with a result.
 ///
@@ -112,6 +113,36 @@ pub trait Primitive {
     ) -> Self::Point
     where
         T: Transform<Self::Point>;
+
+    /// Get the closest valid normal on the shape to a given normal, in world space.
+    /// A normal is valid if there exists a tangent to a differentiable point on the
+    /// shape that the normal is perpendicular to, pointing outside the shape.
+    ///
+    /// ## Parameters
+    ///
+    /// - `normal`: The normal to use. This is assumed to be normalized.
+    ///
+    /// ## Returns
+    ///
+    /// Returns the closest valid normal to the given normal.
+    fn closest_valid_normal(
+        &self,
+        normal: &<Self::Point as EuclideanSpace>::Diff,
+        transform: &impl Transform<Self::Point>,
+    ) -> <Self::Point as EuclideanSpace>::Diff
+    where
+        <Self::Point as EuclideanSpace>::Scalar: RelativeEq,
+        <Self::Point as EuclideanSpace>::Scalar: UlpsEq,
+        <Self::Point as EuclideanSpace>::Scalar: BaseFloat,
+        <Self::Point as EuclideanSpace>::Diff: InnerSpace
+    {
+        self.closest_valid_normal_local(
+            &transform
+                .inverse_transform_vector(*normal)
+                .unwrap_or(*normal)
+                .normalize(),
+        )
+    }
 
     /// Get the closest valid normal on the shape to a given normal, in local space.
     /// A normal is valid if there exists a tangent to a differentiable point on the

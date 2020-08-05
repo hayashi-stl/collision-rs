@@ -5,7 +5,7 @@ use cgmath::num_traits::NumCast;
 use cgmath::prelude::*;
 use cgmath::{BaseFloat, Point3, Vector3};
 
-use super::SupportPoint;
+use super::{SupportPoint, EPAResolveDir3Fn};
 use super::*;
 use crate::prelude::*;
 use crate::primitive::util::barycentric_vector;
@@ -117,6 +117,94 @@ where
 }
 
 /// Alternate EPA algorithm implementation for 3D. Only to be used in [`GJK`](struct.GJK.html).
+/// Resolves the collision in a direction given by a function.
+pub struct EPAFn3<S: BaseFloat, F: EPAResolveDir3Fn<S>>(EPA3<S>, marker::PhantomData<F>);
+
+impl<S, F> EPA for EPAFn3<S, F>
+where
+    S: BaseFloat,
+    F: EPAResolveDir3Fn<S>,
+{
+    type Point = Point3<S>;
+
+    fn process<SL, SR, TL, TR>(
+        &self,
+        mut simplex: &mut Vec<SupportPoint<Self::Point>>,
+        left: &SL,
+        left_transform: &TL,
+        right: &SR,
+        right_transform: &TR,
+    ) -> Option<Contact<Self::Point>>
+    where
+        SL: Primitive<Point = Self::Point>,
+        SR: Primitive<Point = Self::Point>,
+        TL: Transform<Self::Point>,
+        TR: Transform<Self::Point>,
+    {
+        // First get the closest face normally so we have a normal to get the closest valid one to
+        if simplex.len() < 4 {
+            return None;
+        }
+        let mut polytope = Polytope::new(&mut simplex);
+        let face_index = self.0.closest_face(
+            &mut polytope,
+            left,
+            left_transform,
+            right,
+            right_transform,
+            |p| Some(p.closest_face_to_origin()),
+        )?;
+        let face = &polytope.faces[face_index];
+
+        // Now use the function
+        let n = F::normal(&face.normal, left, left_transform, right, right_transform);
+        let dir = F::resolve_dir(&n, left, left_transform, right, right_transform);
+
+        if ulps_ne!(dir, face.normal) {
+            // Now get the closest face along the resolving direction
+
+            let face_index = self.0.closest_face(
+                &mut polytope,
+                left,
+                left_transform,
+                right,
+                right_transform,
+                |p| p.closest_face_along_direction(dir),
+            )?;
+            let face = &polytope.faces[face_index];
+
+            let distance = face.distance / face.normal.dot(dir);
+            return Some(Contact::new_with_point_and_resolve_dir(
+                CollisionStrategy::FullResolution,
+                n,
+                dir,
+                distance,
+                point_from_minkowski_vector(&polytope, face, dir * distance),
+            ));
+        }
+
+        Some(Contact::new_with_point_and_resolve_dir(
+            CollisionStrategy::FullResolution,
+            n,
+            face.normal,
+            face.distance,
+            point(&polytope, face),
+        ))
+    }
+
+    fn new() -> Self {
+        Self::new_with_tolerance(NumCast::from(EPA_TOLERANCE).unwrap(), MAX_ITERATIONS)
+    }
+
+    fn new_with_tolerance(
+        tolerance: <Self::Point as EuclideanSpace>::Scalar,
+        max_iterations: u32,
+    ) -> Self {
+        Self(EPA3::new_with_tolerance(tolerance, max_iterations), marker::PhantomData)
+    }
+}
+
+/// Alternate EPA algorithm implementation for 3D. Only to be used in [`GJK`](struct.GJK.html).
 /// The difference is that the normal returned is guaranteed to be a normal
 /// that exists on the left collider.
 #[derive(Debug)]
@@ -158,12 +246,7 @@ where
         let face = &polytope.faces[face_index];
 
         // Now get a valid normal
-        let n = left.closest_valid_normal_local(
-            &left_transform
-                .inverse_transform_vector(face.normal)
-                .unwrap_or(face.normal)
-                .normalize(),
-        );
+        let n = left.closest_valid_normal(&face.normal, left_transform);
 
         // Often it will be the case that the closest valid normal *is* the previously calculated normal
         if ulps_ne!(n, face.normal) {

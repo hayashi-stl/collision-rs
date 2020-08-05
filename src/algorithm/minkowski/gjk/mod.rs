@@ -13,7 +13,9 @@ use cgmath::UlpsEq;
 
 use self::simplex::{Simplex, SimplexProcessor2, SimplexProcessor3};
 use crate::algorithm::minkowski::{EPALeft2, EPALeft3, SupportPoint, EPA, EPA2, EPA3};
+use crate::algorithm::minkowski::{EPAFn3, EPAResolveDir3Fn};
 use crate::prelude::*;
+use crate::epa_resolve_dir3;
 use crate::{CollisionStrategy, Contact};
 use approx::ulps_eq;
 
@@ -33,6 +35,10 @@ pub type GJKLeft2<S> = GJK<SimplexProcessor2<S>, EPALeft2<S>, S>;
 
 /// GJK algorithm for 3D, see [GJK](struct.GJK.html) for more information.
 pub type GJK3<S> = GJK<SimplexProcessor3<S>, EPA3<S>, S>;
+
+/// GJK algorithm for 3D, see [GJK](struct.GJK.html) for more information.
+/// This one uses a function to get the direction to resolve the collision in.
+pub type GJKFn3<S, F: EPAResolveDir3Fn<S>> = GJK<SimplexProcessor3<S>, EPAFn3<S, F>, S>;
 
 /// GJK algorithm for 3D, see [GJK](struct.GJK.html) for more information.
 /// This one guarantees that the normal returned in the case of full resolution
@@ -857,6 +863,41 @@ mod tests {
             &right_transform,
         ).unwrap();
         assert_eq!(Vector3::new(0., 0., 1.), contact.normal);
+    }
+
+    #[test]
+    fn test_gjk_3d_hit_fn() {
+        // Y'know, let's resolve the collision to the right this time.
+        epa_resolve_dir3! {
+            ResolveRight<f32> = for<SL, SR, TL, TR>
+                normal |n, _l, _lt, _r, _rt| *n,
+                resolve_dir |_n, _l, _lt, _r, _rt| Vector3::<f32>::new(1., 0., 0.)
+        }
+
+        let left = Cuboid::new(4., 4., 4.);
+        let left_transform = transform_3d(0., 0., 0., 0.);
+        let right = ConvexPolyhedron::new_with_faces(
+            vec![
+                Point3::new(3., -1., 3.),
+                Point3::new(-1., 3., 3.),
+                Point3::new(3., 3., -1.),
+                Point3::new(3., 3., 3.),
+            ],
+            vec![(0, 1, 2), (0, 3, 1), (1, 3, 2), (2, 3, 0)]
+        );
+        let right_transform = transform_3d(0., 0., 0., 0.);
+        let gjk = GJKFn3::<_, ResolveRight>::new();
+        let contact = gjk.intersection(
+            &CollisionStrategy::FullResolution,
+            &left,
+            &left_transform,
+            &right,
+            &right_transform,
+        ).unwrap();
+        assert_ulps_eq!(Vector3::new(1./3f32.sqrt(), 1./3f32.sqrt(), 1./3f32.sqrt()), contact.normal);
+        assert_ulps_eq!(Vector3::new(1., 0., 0.), contact.resolve_dir);
+        assert_ulps_eq!(1., contact.penetration_depth);
+        assert_ulps_eq!(Point3::new(2., 2., 2.), contact.contact_point);
     }
 
     /// Test for [issue #115](https://github.com/rustgd/collision-rs/issues/115)
