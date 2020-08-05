@@ -1,5 +1,6 @@
 use std::marker;
 
+use approx::ulps_ne;
 use cgmath::num_traits::NumCast;
 use cgmath::prelude::*;
 use cgmath::{BaseFloat, Point3, Vector3};
@@ -16,6 +17,50 @@ pub struct EPA3<S> {
     m: marker::PhantomData<S>,
     tolerance: S,
     max_iterations: u32,
+}
+
+impl<S: BaseFloat> EPA3<S> {
+    /// Gets the index of the closest face using a custom closest face function,
+    /// and also returns the polytope that was constructed.
+    /// Does not return the closest face directly because that face
+    /// would hold a mutable borrow of the polytope even though it should hold an immutable borrow.
+    fn closest_face<'a, 'r, SL, SR, TL, TR, F>(
+        &self,
+        polytope: &'a mut Polytope<'r, S>,
+        left: &SL,
+        left_transform: &TL,
+        right: &SR,
+        right_transform: &TR,
+        closest_face_fn: F,
+    ) -> Option<usize>
+    where
+        SL: Primitive<Point = <Self as EPA>::Point>,
+        SR: Primitive<Point = <Self as EPA>::Point>,
+        TL: Transform<<Self as EPA>::Point>,
+        TR: Transform<<Self as EPA>::Point>,
+        F: for<'b> Fn(&'b Polytope<'r, S>) -> Option<&'b Face<S>>,
+    {
+        let mut i = 1;
+        loop {
+            let p = {
+                let face = closest_face_fn(polytope)?;
+                let p = SupportPoint::from_minkowski(
+                    left,
+                    left_transform,
+                    right,
+                    right_transform,
+                    &face.normal,
+                );
+                let d = p.v.dot(face.normal);
+                if d - face.distance < self.tolerance || i >= self.max_iterations {
+                    return Some(polytope.face_index(face));
+                }
+                p
+            };
+            polytope.add(p);
+            i += 1;
+        }
+    }
 }
 
 impl<S> EPA for EPA3<S>
@@ -42,26 +87,17 @@ where
             return None;
         }
         let mut polytope = Polytope::new(&mut simplex);
-        let mut i = 1;
-        loop {
-            let p = {
-                let face = polytope.closest_face_to_origin();
-                let p = SupportPoint::from_minkowski(
-                    left,
-                    left_transform,
-                    right,
-                    right_transform,
-                    &face.normal,
-                );
-                let d = p.v.dot(face.normal);
-                if d - face.distance < self.tolerance || i >= self.max_iterations {
-                    return contact(&polytope, face);
-                }
-                p
-            };
-            polytope.add(p);
-            i += 1;
-        }
+        let face_index = self.closest_face(
+            &mut polytope,
+            left,
+            left_transform,
+            right,
+            right_transform,
+            |p| Some(p.closest_face_to_origin()),
+        )?;
+        let face = &polytope.faces[face_index];
+
+        contact(&polytope, face)
     }
 
     fn new() -> Self {
@@ -77,6 +113,94 @@ where
             tolerance,
             max_iterations,
         }
+    }
+}
+
+/// Alternate EPA algorithm implementation for 3D. Only to be used in [`GJK`](struct.GJK.html).
+/// The difference is that the normal returned is guaranteed to be a normal
+/// that exists on the left collider.
+#[derive(Debug)]
+pub struct EPALeft3<S>(EPA3<S>);
+
+impl<S> EPA for EPALeft3<S>
+where
+    S: BaseFloat,
+{
+    type Point = Point3<S>;
+
+    fn process<SL, SR, TL, TR>(
+        &self,
+        mut simplex: &mut Vec<SupportPoint<Self::Point>>,
+        left: &SL,
+        left_transform: &TL,
+        right: &SR,
+        right_transform: &TR,
+    ) -> Option<Contact<Self::Point>>
+    where
+        SL: Primitive<Point = Self::Point>,
+        SR: Primitive<Point = Self::Point>,
+        TL: Transform<Self::Point>,
+        TR: Transform<Self::Point>,
+    {
+        // First get the closest face normally so we have a normal to get the closest valid one to
+        if simplex.len() < 4 {
+            return None;
+        }
+        let mut polytope = Polytope::new(&mut simplex);
+        let face_index = self.0.closest_face(
+            &mut polytope,
+            left,
+            left_transform,
+            right,
+            right_transform,
+            |p| Some(p.closest_face_to_origin()),
+        )?;
+        let face = &polytope.faces[face_index];
+
+        // Now get a valid normal
+        let n = left.closest_valid_normal_local(
+            &left_transform
+                .inverse_transform_vector(face.normal)
+                .unwrap_or(face.normal)
+                .normalize(),
+        );
+
+        // Often it will be the case that the closest valid normal *is* the previously calculated normal
+        if ulps_ne!(n, face.normal) {
+            // Now get the closest face along the valid normal
+
+            let face_index = self.0.closest_face(
+                &mut polytope,
+                left,
+                left_transform,
+                right,
+                right_transform,
+                |p| p.closest_face_along_direction(n),
+            )?;
+            let face = &polytope.faces[face_index];
+
+            let distance = face.distance / face.normal.dot(n);
+            return Some(Contact::new_with_point(
+                CollisionStrategy::FullResolution,
+                n,
+                distance,
+                // TODO: Fix point
+                point_from_minkowski_vector(&polytope, face, n * distance),
+            ));
+        }
+
+        contact(&polytope, face)
+    }
+
+    fn new() -> Self {
+        Self::new_with_tolerance(NumCast::from(EPA_TOLERANCE).unwrap(), MAX_ITERATIONS)
+    }
+
+    fn new_with_tolerance(
+        tolerance: <Self::Point as EuclideanSpace>::Scalar,
+        max_iterations: u32,
+    ) -> Self {
+        Self(EPA3::new_with_tolerance(tolerance, max_iterations))
     }
 }
 
@@ -101,8 +225,19 @@ fn point<S>(polytope: &Polytope<S>, face: &Face<S>) -> Point3<S>
 where
     S: BaseFloat,
 {
+    point_from_minkowski_vector(polytope, face, face.normal * face.distance)
+}
+
+fn point_from_minkowski_vector<S>(
+    polytope: &Polytope<S>,
+    face: &Face<S>,
+    vector: Vector3<S>,
+) -> Point3<S>
+where
+    S: BaseFloat,
+{
     let (u, v, w) = barycentric_vector(
-        face.normal * face.distance,
+        vector,
         polytope.vertices[face.vertices[0]].v,
         polytope.vertices[face.vertices[1]].v,
         polytope.vertices[face.vertices[2]].v,
@@ -134,7 +269,15 @@ where
         }
     }
 
-    pub fn closest_face_to_origin(&'a self) -> &'a Face<S> {
+    /// Gets the index of a face reference.
+    /// The face reference must be a reference to a face in this polytope.
+    #[allow(trivial_casts)]
+    pub fn face_index(&self, face: &Face<S>) -> usize {
+        (face as *const Face<S> as usize - self.faces.as_ptr() as usize)
+            / std::mem::size_of::<Face<S>>()
+    }
+
+    pub fn closest_face_to_origin<'b>(&'b self) -> &'b Face<S> {
         let mut face = &self.faces[0];
         for f in self.faces[1..].iter() {
             if f.distance < face.distance {
@@ -142,6 +285,50 @@ where
             }
         }
         face
+    }
+
+    /// Gets the closest face from the origin when forced to
+    /// travel in a specific direction.
+    /// Assumes the direction is normalized.
+    pub fn closest_face_along_direction<'b>(
+        &'b self,
+        direction: Vector3<S>,
+    ) -> Option<&'b Face<S>> {
+        if self.vertices.len() < 4 {
+            None
+        } else {
+            let mut face = None;
+            let mut distance = S::infinity();
+
+            for f in &self.faces {
+                let cos = direction.dot(f.normal);
+
+                // Wrong side
+                if cos <= S::zero() {
+                    continue;
+                }
+
+                let dist = f.distance / cos;
+
+                if dist < distance {
+                    // Find intersection point on face plane
+                    let point = direction * dist;
+
+                    // Make sure it's inside the triangle
+                    let v0 = self.vertices[f.vertices[0]];
+                    let v1 = self.vertices[f.vertices[1]];
+                    let v2 = self.vertices[f.vertices[2]];
+                    let bc = barycentric_vector(point, v0.v, v1.v, v2.v);
+
+                    if bc.0 <= S::one() && bc.1 <= S::one() && bc.2 <= S::one() {
+                        face = Some(f);
+                        distance = dist;
+                    }
+                }
+            }
+
+            face
+        }
     }
 
     pub fn add(&mut self, sup: SupportPoint<Point3<S>>) {
@@ -221,7 +408,7 @@ fn remove_or_add_edge(edges: &mut Vec<(usize, usize)>, edge: (usize, usize)) {
 #[cfg(test)]
 mod tests {
     use approx::assert_ulps_eq;
-    use cgmath::{Decomposed, Quaternion, Rad, Vector3};
+    use cgmath::{Decomposed, Quaternion, Rad, Vector3, vec3};
 
     use super::*;
     use crate::primitive::*;
@@ -276,6 +463,21 @@ mod tests {
     }
 
     #[test]
+    fn test_polytope_closest_along_direction() {
+        let mut simplex = vec![
+            sup(3., -3., -1.),
+            sup(-3., -3., -1.),
+            sup(0., 3., -1.),
+            sup(0., 0., 5.),
+        ];
+        let polytope = Polytope::new(&mut simplex);
+        let face = polytope.closest_face_along_direction(
+            vec3(1./26f32.sqrt(), 0., 5./26f32.sqrt())
+        ).unwrap();
+        assert_face(face, 3, 0, 2, 4./21f32.sqrt(), 2./21f32.sqrt(), 1./21f32.sqrt(), 5./21f32.sqrt());
+    }
+
+    #[test]
     fn test_polytope_add() {
         let mut simplex = vec![
             sup(3., -3., -1.),
@@ -316,6 +518,22 @@ mod tests {
         assert_eq!(Vector3::new(-1., 0., 0.), contact.normal);
         assert_eq!(2., contact.penetration_depth);
     }
+
+    //#[test]
+    //fn test_epa_3d_either() {
+    //    let left = Cuboid::new(4., 4., 4.);
+    //    let left_transform = transform_3d(0., 0., 0., 0.);
+    //    let right = ConvexPolyhedron::new_with_faces(
+    //        vec![
+    //            Point3::new(3., -1., 3.),
+    //            Point3::new(-1., 3., 3.),
+    //            Point3::new(3., 3., -1.),
+    //            Point3::new(3., 3., 3.),
+    //        ],
+    //        vec![(0, 1, 2), (0, 3, 1), (1, 3, 2), (2, 3, 0)]
+    //    );
+    //    let right_transform = transform_3d(0., 0., 0., 0.);
+    //}
 
     fn assert_face(
         face: &Face<f32>,

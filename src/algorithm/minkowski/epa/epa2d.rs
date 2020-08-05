@@ -1,5 +1,3 @@
-use std::marker;
-
 use approx::assert_ulps_ne;
 use approx::ulps_ne;
 use cgmath::num_traits::NumCast;

@@ -59,7 +59,7 @@ where
         &self,
         normal: &<Self::Point as EuclideanSpace>::Diff,
     ) -> <Self::Point as EuclideanSpace>::Diff {
-        unimplemented!("closest_valid_normal_local is only implemented for 2D primitives for now")
+        *normal
     }
 }
 

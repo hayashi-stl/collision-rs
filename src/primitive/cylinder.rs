@@ -76,7 +76,13 @@ where
         &self,
         normal: &<Self::Point as EuclideanSpace>::Diff,
     ) -> <Self::Point as EuclideanSpace>::Diff {
-        unimplemented!("closest_valid_normal_local is only implemented for 2D primitives for now")
+        let flat = <Self::Point as EuclideanSpace>::Diff::new(normal.x, Zero::zero(), normal.z);
+
+        if normal.y.abs() > flat.magnitude() {
+            Vector3::new(Zero::zero(), normal.y.signum(), Zero::zero())
+        } else {
+            flat.normalize()
+        }
     }
 }
 
@@ -239,7 +245,7 @@ mod tests {
     use std;
 
     use approx::assert_ulps_eq;
-    use cgmath::{Decomposed, Quaternion, Rad, Vector3};
+    use cgmath::{vec3, Decomposed, Quaternion, Rad, Vector3};
 
     use super::*;
 
@@ -249,6 +255,24 @@ mod tests {
         assert_eq!(
             Aabb3::new(Point3::new(-1., -2., -1.), Point3::new(1., 2., 1.)),
             cylinder.compute_bound()
+        );
+    }
+
+    #[test]
+    fn test_cylinder_closest_valid_normal() {
+        let cylinder = Cylinder::new(1., 1.);
+
+        assert_eq!(
+            vec3(0., 1., 0.),
+            cylinder.closest_valid_normal_local(&vec3(-2.0 / 7.0, 6.0 / 7.0, 3.0 / 7.0))
+        );
+        assert_eq!(
+            vec3(0., -1., 0.),
+            cylinder.closest_valid_normal_local(&vec3(-2.0 / 7.0, -6.0 / 7.0, 3.0 / 7.0))
+        );
+        assert_eq!(
+            vec3(-1., 0., 0.),
+            cylinder.closest_valid_normal_local(&vec3(-0.8, 0.6, 0.0))
         );
     }
 

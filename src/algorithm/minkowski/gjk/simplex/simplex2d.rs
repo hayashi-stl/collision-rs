@@ -1,7 +1,6 @@
 use std::marker;
 use std::ops::Neg;
 
-use approx::ulps_eq;
 use cgmath::prelude::*;
 use cgmath::{BaseFloat, Point2, Vector2};
 

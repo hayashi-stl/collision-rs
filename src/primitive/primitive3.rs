@@ -174,7 +174,19 @@ where
         &self,
         normal: &<Self::Point as EuclideanSpace>::Diff,
     ) -> <Self::Point as EuclideanSpace>::Diff {
-        unimplemented!("closest_valid_normal_local is only implemented for 2D primitives for now")
+        match *self {
+            Primitive3::Particle(_) => panic!(concat!(
+                "Particles don't have valid normals. ",
+                "Please don't use GJKLeft3 where the left collider is a particle"
+            )),
+            Primitive3::Quad(ref shape) => shape.closest_valid_normal_local(normal),
+            Primitive3::Sphere(ref shape) => shape.closest_valid_normal_local(normal),
+            Primitive3::Cuboid(ref shape) => shape.closest_valid_normal_local(normal),
+            Primitive3::Cube(ref shape) => shape.closest_valid_normal_local(normal),
+            Primitive3::Cylinder(ref shape) => shape.closest_valid_normal_local(normal),
+            Primitive3::Capsule(ref shape) => shape.closest_valid_normal_local(normal),
+            Primitive3::ConvexPolyhedron(ref shape) => shape.closest_valid_normal_local(normal),
+        }
     }
 }
 

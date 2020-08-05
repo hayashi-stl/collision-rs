@@ -12,7 +12,7 @@ use cgmath::BaseFloat;
 use cgmath::UlpsEq;
 
 use self::simplex::{Simplex, SimplexProcessor2, SimplexProcessor3};
-use crate::algorithm::minkowski::{EPALeft2, SupportPoint, EPA, EPA2, EPA3};
+use crate::algorithm::minkowski::{EPALeft2, EPALeft3, SupportPoint, EPA, EPA2, EPA3};
 use crate::prelude::*;
 use crate::{CollisionStrategy, Contact};
 use approx::ulps_eq;
@@ -33,6 +33,11 @@ pub type GJKLeft2<S> = GJK<SimplexProcessor2<S>, EPALeft2<S>, S>;
 
 /// GJK algorithm for 3D, see [GJK](struct.GJK.html) for more information.
 pub type GJK3<S> = GJK<SimplexProcessor3<S>, EPA3<S>, S>;
+
+/// GJK algorithm for 3D, see [GJK](struct.GJK.html) for more information.
+/// This one guarantees that the normal returned in the case of full resolution
+/// is from the left collider.
+pub type GJKLeft3<S> = GJK<SimplexProcessor3<S>, EPALeft3<S>, S>;
 
 /// Gilbert-Johnson-Keerthi narrow phase collision detection algorithm.
 ///
@@ -799,6 +804,59 @@ mod tests {
         assert_eq!(Vector3::new(-1., 0., 0.), contact.normal);
         assert_eq!(2., contact.penetration_depth);
         assert_ulps_eq!(Point3::new(10., 1., 5.), contact.contact_point);
+    }
+
+    #[test]
+    fn test_gjk_3d_hit_either() {
+        // Make sure only GJKLeft is changed
+        let left = Cuboid::new(4., 4., 4.);
+        let left_transform = transform_3d(0., 0., 0., 0.);
+        let right = ConvexPolyhedron::new_with_faces(
+            vec![
+                Point3::new(3., -1., 3.),
+                Point3::new(-1., 3., 3.),
+                Point3::new(3., 3., -1.),
+                Point3::new(3., 3., 3.),
+            ],
+            vec![(0, 1, 2), (0, 3, 1), (1, 3, 2), (2, 3, 0)]
+        );
+        let right_transform = transform_3d(0., 0., 0., 0.);
+        let gjk = GJK3::new();
+        let contact = gjk.intersection(
+            &CollisionStrategy::FullResolution,
+            &left,
+            &left_transform,
+            &right,
+            &right_transform,
+        ).unwrap();
+        assert_ulps_eq!(Vector3::new(1./3f32.sqrt(), 1./3f32.sqrt(), 1./3f32.sqrt()), contact.normal);
+        assert_ulps_eq!(1./3f32.sqrt(), contact.penetration_depth);
+        assert_ulps_eq!(Point3::new(2., 2., 2.), contact.contact_point);
+    }
+
+    #[test]
+    fn test_gjk_3d_hit_left() {
+        let left = Cuboid::new(4., 4., 4.);
+        let left_transform = transform_3d(0., 0., 0., 0.);
+        let right = ConvexPolyhedron::new_with_faces(
+            vec![
+                Point3::new(3., -1., 2.5),
+                Point3::new(-1., 3., 2.5),
+                Point3::new(3., 3., -1.),
+                Point3::new(3., 3., 3.),
+            ],
+            vec![(0, 1, 2), (0, 3, 1), (1, 3, 2), (2, 3, 0)]
+        );
+        let right_transform = transform_3d(0., 0., 0., 0.);
+        let gjk = GJKLeft3::new();
+        let contact = gjk.intersection(
+            &CollisionStrategy::FullResolution,
+            &left,
+            &left_transform,
+            &right,
+            &right_transform,
+        ).unwrap();
+        assert_eq!(Vector3::new(0., 0., 1.), contact.normal);
     }
 
     /// Test for [issue #115](https://github.com/rustgd/collision-rs/issues/115)

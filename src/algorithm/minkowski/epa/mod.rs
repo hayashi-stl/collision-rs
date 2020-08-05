@@ -2,6 +2,7 @@
 
 pub use self::epa2d::EPALeft2;
 pub use self::epa2d::EPA2;
+pub use self::epa3d::EPALeft3;
 pub use self::epa3d::EPA3;
 
 mod epa2d;

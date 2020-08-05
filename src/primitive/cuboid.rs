@@ -78,7 +78,13 @@ where
         &self,
         normal: &<Self::Point as EuclideanSpace>::Diff,
     ) -> <Self::Point as EuclideanSpace>::Diff {
-        unimplemented!("closest_valid_normal_local is only implemented for 2D primitives for now")
+        if normal.x.abs() > normal.y.abs() && normal.x.abs() > normal.z.abs() {
+            Vector3::new(normal.x.signum(), Zero::zero(), Zero::zero())
+        } else if normal.y.abs() > normal.z.abs() && normal.y.abs() >= normal.x.abs() {
+            Vector3::new(Zero::zero(), normal.y.signum(), Zero::zero())
+        } else {
+            Vector3::new(Zero::zero(), Zero::zero(), normal.z.signum())
+        }
     }
 }
 
@@ -183,7 +189,7 @@ where
         &self,
         normal: &<Self::Point as EuclideanSpace>::Diff,
     ) -> <Self::Point as EuclideanSpace>::Diff {
-        unimplemented!("closest_valid_normal_local is only implemented for 2D primitives for now")
+        self.cuboid.closest_valid_normal_local(normal)
     }
 }
 
@@ -229,7 +235,7 @@ where
 mod tests {
 
     use approx::assert_ulps_eq;
-    use cgmath::{Decomposed, Point3, Quaternion, Rad, Vector3};
+    use cgmath::{vec3, Decomposed, Point3, Quaternion, Rad, Vector3};
 
     use super::*;
     use Ray3;
@@ -238,6 +244,36 @@ mod tests {
     fn test_rectangle_bound() {
         let r = Cuboid::new(10., 10., 10.);
         assert_eq!(bound(-5., -5., -5., 5., 5., 5.), r.compute_bound())
+    }
+
+    #[test]
+    fn test_cuboid_closest_valid_normal() {
+        let r = Cuboid::new(1., 1., 1.);
+
+        assert_eq!(
+            vec3(1., 0., 0.),
+            r.closest_valid_normal_local(&vec3(6.0 / 7.0, -2.0 / 7.0, 3.0 / 7.0))
+        );
+        assert_eq!(
+            vec3(0., 1., 0.),
+            r.closest_valid_normal_local(&vec3(3.0 / 7.0, 6.0 / 7.0, -2.0 / 7.0))
+        );
+        assert_eq!(
+            vec3(0., 0., 1.),
+            r.closest_valid_normal_local(&vec3(-2.0 / 7.0, 3.0 / 7.0, 6.0 / 7.0))
+        );
+        assert_eq!(
+            vec3(-1., 0., 0.),
+            r.closest_valid_normal_local(&vec3(-0.5f64.sqrt(), 0.5, 0.5))
+        );
+        assert_eq!(
+            vec3(0., -1., 0.),
+            r.closest_valid_normal_local(&vec3(0.5, -0.5f64.sqrt(), 0.5))
+        );
+        assert_eq!(
+            vec3(0., 0., -1.),
+            r.closest_valid_normal_local(&vec3(0.5, 0.5, -0.5f64.sqrt()))
+        );
     }
 
     #[test]

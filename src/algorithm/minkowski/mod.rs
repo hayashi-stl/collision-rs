@@ -1,7 +1,7 @@
 //! Algorithms using the Minkowski Sum/Difference
 
-pub use self::epa::{EPALeft2, EPA, EPA2, EPA3};
-pub use self::gjk::{GJKLeft2, SimplexProcessor, GJK, GJK2, GJK3};
+pub use self::epa::{EPALeft2, EPALeft3, EPA, EPA2, EPA3};
+pub use self::gjk::{GJKLeft2, GJKLeft3, SimplexProcessor, GJK, GJK2, GJK3};
 
 use std::ops::{Neg, Sub};
 
@@ -57,6 +57,15 @@ where
             sup_a: l,
             sup_b: r,
         }
+    }
+
+    /// Flips the simplex so it becomes the result of intersecting
+    /// the colliders in the opposite order.
+    pub fn flip(&mut self) {
+        let (l, r) = (self.sup_a, self.sup_b);
+        self.sup_a = r;
+        self.sup_b = l;
+        self.v = r - l;
     }
 }
 

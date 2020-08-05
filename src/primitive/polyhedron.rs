@@ -102,6 +102,7 @@ where
     }
 
     /// Create a new convex polyhedron from the given vertices and faces.
+    /// The face vertices should be in counterclockwise order from the outside of the polyhedron.
     pub fn new_with_faces(vertices: Vec<Point3<S>>, faces: Vec<(usize, usize, usize)>) -> Self {
         let (vertices, edges, faces) = build_half_edges(&vertices, &faces);
         Self {
@@ -122,6 +123,7 @@ where
 
     /// Create a new convex polyhedron from the given vertices and faces. Will remove any duplicate
     /// vertices.
+    /// The face vertices should be in counterclockwise order from the outside of the polyhedron.
     pub fn new_with_faces_dedup(
         vertices: Vec<Point3<S>>,
         faces: Vec<(usize, usize, usize)>,
@@ -385,7 +387,20 @@ where
         &self,
         normal: &<Self::Point as EuclideanSpace>::Diff,
     ) -> <Self::Point as EuclideanSpace>::Diff {
-        unimplemented!("closest_valid_normal_local is only implemented for 2D primitives for now")
+        if self.mode != PolyhedronMode::HalfEdge {
+            panic!(
+                "closest_valid_normal_local is not implemented for ConvexPolyhedron without faces."
+            )
+        }
+
+        self.faces_iter()
+            .map(|(v0, v1, v2)| (v1 - v0).cross(v2 - v0).normalize())
+            .max_by(|m, n| {
+                m.dot(*normal)
+                    .partial_cmp(&n.dot(*normal))
+                    .unwrap_or(Ordering::Equal)
+            })
+            .unwrap()
     }
 }
 
@@ -585,7 +600,7 @@ mod tests {
 
     use approx::assert_ulps_eq;
     use cgmath::prelude::*;
-    use cgmath::{Decomposed, Point3, Quaternion, Rad, Vector3};
+    use cgmath::{vec3, Decomposed, Point3, Quaternion, Rad, Vector3};
 
     use super::ConvexPolyhedron;
     use crate::prelude::*;
@@ -641,6 +656,28 @@ mod tests {
         assert_eq!(
             Aabb3::new(Point3::new(0., 0., 0.), Point3::new(1., 1., 1.)),
             polytope.compute_bound()
+        );
+    }
+
+    #[test]
+    fn test_polytope_closest_valid_normal() {
+        let vertices = vec![
+            Point3::<f64>::new(1., 0., 0.),
+            Point3::<f64>::new(0., 1., 0.),
+            Point3::<f64>::new(0., 0., 1.),
+            Point3::<f64>::new(0., 0., 0.),
+        ];
+        let faces = vec![(1, 3, 2), (3, 1, 0), (2, 0, 1), (0, 2, 3)];
+
+        let polytope = ConvexPolyhedron::new_with_faces(vertices.clone(), faces);
+
+        assert_ulps_eq!(
+            vec3((1. / 3f64).sqrt(), (1. / 3f64).sqrt(), (1. / 3f64).sqrt()),
+            polytope.closest_valid_normal_local(&vec3(1., 0., 0.))
+        );
+        assert_eq!(
+            vec3(-1., 0., 0.),
+            polytope.closest_valid_normal_local(&vec3(-0.5f64.sqrt(), 0., 0.5f64.sqrt()))
         );
     }
 
