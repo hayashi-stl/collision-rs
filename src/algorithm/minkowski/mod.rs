@@ -1,6 +1,6 @@
 //! Algorithms using the Minkowski Sum/Difference
 
-pub use self::epa::{EPALeft2, EPALeft3, EPA, EPA2, EPA3, EPAResolveDir3Fn, EPAFn3};
+pub use self::epa::{EPALeft2, EPALeft3, EPA, EPA2, EPA3};
 pub use self::gjk::{GJKLeft2, GJKLeft3, SimplexProcessor, GJK, GJK2, GJK3};
 
 use std::ops::{Neg, Sub};

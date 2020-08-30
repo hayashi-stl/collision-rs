@@ -136,12 +136,12 @@ pub trait Primitive {
         <Self::Point as EuclideanSpace>::Scalar: BaseFloat,
         <Self::Point as EuclideanSpace>::Diff: InnerSpace
     {
-        self.closest_valid_normal_local(
+        transform.transform_vector(self.closest_valid_normal_local(
             &transform
                 .inverse_transform_vector(*normal)
                 .unwrap_or(*normal)
                 .normalize(),
-        )
+        ))
     }
 
     /// Get the closest valid normal on the shape to a given normal, in local space.

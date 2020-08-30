@@ -13,9 +13,7 @@ use cgmath::UlpsEq;
 
 use self::simplex::{Simplex, SimplexProcessor2, SimplexProcessor3};
 use crate::algorithm::minkowski::{EPALeft2, EPALeft3, SupportPoint, EPA, EPA2, EPA3};
-use crate::algorithm::minkowski::{EPAFn3, EPAResolveDir3Fn};
 use crate::prelude::*;
-use crate::epa_resolve_dir3;
 use crate::{CollisionStrategy, Contact};
 use approx::ulps_eq;
 
@@ -35,10 +33,6 @@ pub type GJKLeft2<S> = GJK<SimplexProcessor2<S>, EPALeft2<S>, S>;
 
 /// GJK algorithm for 3D, see [GJK](struct.GJK.html) for more information.
 pub type GJK3<S> = GJK<SimplexProcessor3<S>, EPA3<S>, S>;
-
-/// GJK algorithm for 3D, see [GJK](struct.GJK.html) for more information.
-/// This one uses a function to get the direction to resolve the collision in.
-pub type GJKFn3<S, F: EPAResolveDir3Fn<S>> = GJK<SimplexProcessor3<S>, EPAFn3<S, F>, S>;
 
 /// GJK algorithm for 3D, see [GJK](struct.GJK.html) for more information.
 /// This one guarantees that the normal returned in the case of full resolution
@@ -359,6 +353,34 @@ where
             .process(&mut simplex, left, left_transform, right, right_transform)
     }
 
+    /// Given a GJK simplex that encloses the origin, compute the contact manifold.
+    ///
+    /// Takes a function that outputs the true normal given the input normal and shapes,
+    /// and a function that outputs the resolve_dir given the normal and shapes.
+    ///
+    /// Uses the EPA algorithm to find the contact information from the simplex.
+    pub fn get_contact_manifold_ex<P, PL, PR, TL, TR>(
+        &self,
+        mut simplex: &mut Vec<SupportPoint<P>>,
+        left: &PL,
+        left_transform: &TL,
+        right: &PR,
+        right_transform: &TR,
+        normal_fn: impl FnOnce(&<P as EuclideanSpace>::Diff, &PL, &TL, &PR, &TR) -> <P as EuclideanSpace>::Diff,
+        resolve_dir_fn: impl FnOnce(&<P as EuclideanSpace>::Diff, &PL, &TL, &PR, &TR) -> <P as EuclideanSpace>::Diff,
+    ) -> Option<Contact<P>>
+    where
+        P: EuclideanSpace<Scalar = S>,
+        PL: Primitive<Point = P>,
+        PR: Primitive<Point = P>,
+        TL: Transform<P>,
+        TR: Transform<P>,
+        SP: SimplexProcessor<Point = P>,
+    {
+        self.epa
+            .process_ex(&mut simplex, left, left_transform, right, right_transform, normal_fn, resolve_dir_fn)
+    }
+
     /// Do intersection testing on the given primitives, and return the contact manifold.
     ///
     /// ## Parameters:
@@ -402,6 +424,60 @@ where
                     left_transform,
                     right,
                     right_transform,
+                ),
+            })
+    }
+
+    /// Do intersection testing on the given primitives, and return the contact manifold.
+    ///
+    /// ## Parameters:
+    ///
+    /// - `strategy`: strategy to use, if `CollisionOnly` it will only return a boolean result,
+    ///               otherwise, EPA will be used to compute the exact contact point.
+    /// - `left`: left primitive
+    /// - `left_transform`: model-to-world-transform for the left primitive
+    /// - `right`: right primitive,
+    /// - `right_transform`: model-to-world-transform for the right primitive
+    /// - `normal_fn`: function that outputs the true normal given the input normal and shapes
+    /// - `resolve_dir_fn`: function that outputs the resolve_dir given the normal and shapes
+    ///
+    ///
+    /// ## Returns:
+    ///
+    /// Will optionally return a `Contact` if a collision was detected. In `CollisionOnly` mode,
+    /// this contact will only be a boolean result. For `FullResolution` mode, the contact will
+    /// contain a full manifold (collision normal, penetration depth and contact point).
+    pub fn intersection_ex<P, PL, PR, TL, TR>(
+        &self,
+        strategy: &CollisionStrategy,
+        left: &PL,
+        left_transform: &TL,
+        right: &PR,
+        right_transform: &TR,
+        normal_fn: impl FnOnce(&<P as EuclideanSpace>::Diff, &PL, &TL, &PR, &TR) -> <P as EuclideanSpace>::Diff,
+        resolve_dir_fn: impl FnOnce(&<P as EuclideanSpace>::Diff, &PL, &TL, &PR, &TR) -> <P as EuclideanSpace>::Diff,
+    ) -> Option<Contact<P>>
+    where
+        P: EuclideanSpace<Scalar = S>,
+        P::Diff: Neg<Output = P::Diff> + InnerSpace + Zero + Array<Element = S> + UlpsEq,
+        PL: Primitive<Point = P>,
+        PR: Primitive<Point = P>,
+        TL: Transform<P>,
+        TR: Transform<P>,
+        SP: SimplexProcessor<Point = P>,
+    {
+        use CollisionStrategy::*;
+        self.intersect(left, left_transform, right, right_transform)
+            .and_then(|simplex| match *strategy {
+                CollisionOnly => Some(Contact::new(CollisionOnly)),
+                FullResolution => self.get_contact_manifold_ex(
+                    &mut simplex.into_vec(),
+                    left,
+                    left_transform,
+                    right,
+                    right_transform,
+                    normal_fn,
+                    resolve_dir_fn,
                 ),
             })
     }
@@ -867,13 +943,6 @@ mod tests {
 
     #[test]
     fn test_gjk_3d_hit_fn() {
-        // Y'know, let's resolve the collision to the right this time.
-        epa_resolve_dir3! {
-            ResolveRight<f32> = for<SL, SR, TL, TR>
-                normal |n, _l, _lt, _r, _rt| *n,
-                resolve_dir |_n, _l, _lt, _r, _rt| Vector3::<f32>::new(1., 0., 0.)
-        }
-
         let left = Cuboid::new(4., 4., 4.);
         let left_transform = transform_3d(0., 0., 0., 0.);
         let right = ConvexPolyhedron::new_with_faces(
@@ -886,13 +955,16 @@ mod tests {
             vec![(0, 1, 2), (0, 3, 1), (1, 3, 2), (2, 3, 0)]
         );
         let right_transform = transform_3d(0., 0., 0., 0.);
-        let gjk = GJKFn3::<_, ResolveRight>::new();
-        let contact = gjk.intersection(
+        let gjk = GJK3::new();
+        let contact = gjk.intersection_ex(
             &CollisionStrategy::FullResolution,
             &left,
             &left_transform,
             &right,
             &right_transform,
+            // Y'know, let's resolve the collision to the right this time.
+            |n, _l, _lt, _r, _rt| *n,
+            |_n, _l, _lt, _r, _rt| Vector3::<f32>::new(1., 0., 0.)
         ).unwrap();
         assert_ulps_eq!(Vector3::new(1./3f32.sqrt(), 1./3f32.sqrt(), 1./3f32.sqrt()), contact.normal);
         assert_ulps_eq!(Vector3::new(1., 0., 0.), contact.resolve_dir);
