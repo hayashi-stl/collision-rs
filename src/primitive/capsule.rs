@@ -1,5 +1,5 @@
 use cgmath::prelude::*;
-use cgmath::{BaseFloat, Point3, Vector3};
+use cgmath::{vec3, BaseFloat, Point3, Vector3};
 
 use crate::prelude::*;
 use crate::primitive::util::cylinder_ray_quadratic_solve;
@@ -145,6 +145,17 @@ where
     type Result = Point3<S>;
 
     fn intersection(&self, r: &Ray3<S>) -> Option<Point3<S>> {
+        self.intersection_normal(r).map(|(p, _)| p)
+    }
+}
+
+impl<S> ContinuousNormal<Ray3<S>> for Capsule<S>
+where
+    S: BaseFloat,
+{
+    type Point = Point3<S>;
+
+    fn intersection_normal(&self, r: &Ray3<S>) -> Option<(Point3<S>, Vector3<S>)> {
         let (t1, t2) = match cylinder_ray_quadratic_solve(r, self.radius) {
             None => return None,
             Some(t) => t,
@@ -162,6 +173,9 @@ where
             t1.min(t2)
         };
 
+        let mut hit_top = false;
+        let mut hit_bottom = false;
+
         // top sphere
         let l = Vector3::new(-r.origin.x, self.half_height - r.origin.y, -r.origin.z);
         let tca = l.dot(r.direction);
@@ -172,6 +186,7 @@ where
                 let t0 = tca - thc;
                 if t0 >= S::zero() && (t.is_nan() || t0 < t) {
                     t = t0;
+                    hit_top = true;
                 }
             }
         }
@@ -186,6 +201,7 @@ where
                 let t0 = tca - thc;
                 if t0 >= S::zero() && (t.is_nan() || t0 < t) {
                     t = t0;
+                    hit_bottom = true;
                 }
             }
         }
@@ -195,11 +211,18 @@ where
         }
 
         let pc = r.origin + r.direction * t;
+        let normal = if hit_top {
+            (pc.to_vec() - Vector3::unit_y() * self.half_height).normalize()
+        } else if hit_bottom {
+            (pc.to_vec() - Vector3::unit_y() * -self.half_height).normalize()
+        } else {
+            vec3(pc.x, S::zero(), pc.z).normalize()
+        };
         let full_half_height = self.half_height + self.radius;
-        if (pc.y > full_half_height) || (pc.y < -full_half_height) {
+        if ((pc.y > full_half_height) || (pc.y < -full_half_height)) && !hit_top && !hit_bottom {
             None
         } else {
-            Some(pc)
+            Some((pc, normal))
         }
     }
 }
@@ -319,6 +342,16 @@ mod tests {
     }
 
     #[test]
+    fn test_continuous_normal_1() {
+        let capsule = Capsule::new(2., 1.);
+        let ray = Ray3::new(Point3::new(-3., 0., 0.), Vector3::new(1., 0., 0.));
+        assert_eq!(
+            Some((Point3::new(-1., 0., 0.), vec3(-1., 0., 0.))),
+            capsule.intersection_normal(&ray)
+        );
+    }
+
+    #[test]
     fn test_continuous_2() {
         let capsule = Capsule::new(2., 1.);
         let ray = Ray3::new(Point3::new(-3., 0., 0.), Vector3::new(-1., 0., 0.));
@@ -332,14 +365,38 @@ mod tests {
             Point3::new(0., 4., 0.),
             Vector3::new(0.1, -1., 0.1).normalize(),
         );
-        assert_eq!(
-            Some(Point3::new(
+        if let Some(p) = capsule.intersection(&ray) {
+            assert_ulps_eq!(Point3::new(
                 0.10102588514869944,
                 2.989741148513006,
                 0.10102588514869944
-            )),
-            capsule.intersection(&ray)
+            ), p)
+        } else {
+            panic!("Expected intersection")
+        }
+    }
+
+    #[test]
+    fn test_continuous_normal_3() {
+        let capsule = Capsule::new(2., 1.);
+        let ray = Ray3::new(
+            Point3::new(0., 4., 0.),
+            Vector3::new(0.1, -1., 0.1).normalize(),
         );
+        if let Some((p, n)) = capsule.intersection_normal(&ray) {
+            assert_ulps_eq!(Point3::new(
+                0.10102588514869944,
+                2.989741148513006,
+                0.10102588514869944
+            ), p);
+            assert_ulps_eq!(vec3(
+                0.10102588514869944,
+                0.989741148513006,
+                0.10102588514869944
+            ), n);
+        } else {
+            panic!("Expected intersection")
+        }
     }
 
     #[test]
@@ -360,6 +417,16 @@ mod tests {
             Vector3::new(0., -1., 0.).normalize(),
         );
         assert_eq!(Some(Point3::new(0., 3., 0.)), capsule.intersection(&ray));
+    }
+
+    #[test]
+    fn test_continuous_normal_5() {
+        let capsule = Capsule::new(2., 1.);
+        let ray = Ray3::new(
+            Point3::new(0., 4., 0.),
+            Vector3::new(0., -1., 0.).normalize(),
+        );
+        assert_eq!(Some((Point3::new(0., 3., 0.), vec3(0., 1., 0.))), capsule.intersection_normal(&ray));
     }
 
     // util

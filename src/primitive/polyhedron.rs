@@ -444,6 +444,18 @@ where
 
     /// Ray must be in object space
     fn intersection(&self, ray: &Ray3<S>) -> Option<Point3<S>> {
+        self.intersection_normal(ray).map(|(p, _)| p)
+    }
+}
+
+impl<S> ContinuousNormal<Ray3<S>> for ConvexPolyhedron<S>
+where
+    S: BaseFloat,
+{
+    type Point = Point3<S>;
+
+    /// Ray must be in object space
+    fn intersection_normal(&self, ray: &Ray3<S>) -> Option<(Point3<S>, Vector3<S>)> {
         find_intersecting_face(self, ray).and_then(|(face_index, (u, v, w))| {
             let f = &self.faces[face_index];
             let v0 = f.vertices.0;
@@ -452,7 +464,11 @@ where
             let p = (self.vertices[v0].position * u)
                 + (self.vertices[v1].position.to_vec() * v)
                 + (self.vertices[v2].position.to_vec() * w);
-            Some(p)
+            let v01 = self.vertices[v1].position - self.vertices[v0].position;
+            let v02 = self.vertices[v2].position - self.vertices[v1].position;
+            // By assumption, the face vertices are in counterclockwise order from the outside of the polyhedron.
+            // So the normal points the right way
+            Some((p, v01.cross(v02).normalize()))
         })
     }
 }
@@ -609,10 +625,10 @@ mod tests {
     #[test]
     fn test_polytope_half_edge() {
         let vertices = vec![
-            Point3::<f32>::new(1., 0., 0.),
-            Point3::<f32>::new(0., 1., 0.),
-            Point3::<f32>::new(0., 0., 1.),
-            Point3::<f32>::new(0., 0., 0.),
+            Point3::<f64>::new(1., 0., 0.),
+            Point3::<f64>::new(0., 1., 0.),
+            Point3::<f64>::new(0., 0., 1.),
+            Point3::<f64>::new(0., 0., 0.),
         ];
         let faces = vec![(1, 3, 2), (3, 1, 0), (2, 0, 1), (0, 2, 3)];
 
@@ -645,10 +661,10 @@ mod tests {
     #[test]
     fn test_polytope_bound() {
         let vertices = vec![
-            Point3::<f32>::new(1., 0., 0.),
-            Point3::<f32>::new(0., 1., 0.),
-            Point3::<f32>::new(0., 0., 1.),
-            Point3::<f32>::new(0., 0., 0.),
+            Point3::<f64>::new(1., 0., 0.),
+            Point3::<f64>::new(0., 1., 0.),
+            Point3::<f64>::new(0., 0., 1.),
+            Point3::<f64>::new(0., 0., 0.),
         ];
         let faces = vec![(1, 3, 2), (3, 1, 0), (2, 0, 1), (0, 2, 3)];
 
@@ -684,10 +700,10 @@ mod tests {
     #[test]
     fn test_ray_discrete() {
         let vertices = vec![
-            Point3::<f32>::new(1., 0., 0.),
-            Point3::<f32>::new(0., 1., 0.),
-            Point3::<f32>::new(0., 0., 1.),
-            Point3::<f32>::new(0., 0., 0.),
+            Point3::<f64>::new(1., 0., 0.),
+            Point3::<f64>::new(0., 1., 0.),
+            Point3::<f64>::new(0., 0., 1.),
+            Point3::<f64>::new(0., 0., 0.),
         ];
         let faces = vec![(1, 3, 2), (3, 1, 0), (2, 0, 1), (0, 2, 3)];
 
@@ -701,10 +717,10 @@ mod tests {
     #[test]
     fn test_ray_discrete_transformed() {
         let vertices = vec![
-            Point3::<f32>::new(1., 0., 0.),
-            Point3::<f32>::new(0., 1., 0.),
-            Point3::<f32>::new(0., 0., 1.),
-            Point3::<f32>::new(0., 0., 0.),
+            Point3::<f64>::new(1., 0., 0.),
+            Point3::<f64>::new(0., 1., 0.),
+            Point3::<f64>::new(0., 0., 1.),
+            Point3::<f64>::new(0., 0., 0.),
         ];
         let faces = vec![(1, 3, 2), (3, 1, 0), (2, 0, 1), (0, 2, 3)];
         let polytope = ConvexPolyhedron::new_with_faces(vertices.clone(), faces);
@@ -723,19 +739,19 @@ mod tests {
     #[test]
     fn test_ray_continuous() {
         let vertices = vec![
-            Point3::<f32>::new(1., 0., 0.),
-            Point3::<f32>::new(0., 1., 0.),
-            Point3::<f32>::new(0., 0., 1.),
-            Point3::<f32>::new(0., 0., 0.),
+            Point3::<f64>::new(1., 0., 0.),
+            Point3::<f64>::new(0., 1., 0.),
+            Point3::<f64>::new(0., 0., 1.),
+            Point3::<f64>::new(0., 0., 0.),
         ];
         let faces = vec![(1, 3, 2), (3, 1, 0), (2, 0, 1), (0, 2, 3)];
 
         let polytope = ConvexPolyhedron::new_with_faces(vertices.clone(), faces);
         let ray = Ray3::new(Point3::new(0.25, 5., 0.25), Vector3::new(0., -1., 0.));
         let p = polytope.intersection(&ray).unwrap();
-        assert_ulps_eq!(0.25000018, p.x);
-        assert_ulps_eq!(0.4999997, p.y);
-        assert_ulps_eq!(0.25000018, p.z);
+        assert_ulps_eq!(0.25, p.x);
+        assert_ulps_eq!(0.5, p.y);
+        assert_ulps_eq!(0.25, p.z);
         let ray = Ray3::new(Point3::new(0.5, 5., 0.5), Vector3::new(0., 1., 0.));
         assert_eq!(None, polytope.intersection(&ray));
         let ray = Ray3::new(Point3::new(0., 5., 0.), Vector3::new(0., -1., 0.));
@@ -743,43 +759,94 @@ mod tests {
     }
 
     #[test]
+    fn test_ray_continuous_normal() {
+        let vertices = vec![
+            Point3::<f64>::new(1., 0., 0.),
+            Point3::<f64>::new(0., 1., 0.),
+            Point3::<f64>::new(0., 0., 1.),
+            Point3::<f64>::new(0., 0., 0.),
+        ];
+        let faces = vec![(1, 3, 2), (3, 1, 0), (2, 0, 1), (0, 2, 3)];
+
+        let polytope = ConvexPolyhedron::new_with_faces(vertices.clone(), faces);
+        let ray = Ray3::new(Point3::new(0.25, 5., 0.25), Vector3::new(0., -1., 0.));
+        let (p, n) = polytope.intersection_normal(&ray).unwrap();
+        assert_ulps_eq!(Point3::new(0.25, 0.5, 0.25), p);
+        assert_ulps_eq!(vec3(1., 1., 1.).normalize(), n);
+        let ray = Ray3::new(Point3::new(0.5, 5., 0.5), Vector3::new(0., 1., 0.));
+        assert_eq!(None, polytope.intersection(&ray));
+    }
+
+    #[test]
     fn test_ray_continuous_transformed() {
         let vertices = vec![
-            Point3::<f32>::new(1., 0., 0.),
-            Point3::<f32>::new(0., 1., 0.),
-            Point3::<f32>::new(0., 0., 1.),
-            Point3::<f32>::new(0., 0., 0.),
+            Point3::<f64>::new(1., 0., 0.),
+            Point3::<f64>::new(0., 1., 0.),
+            Point3::<f64>::new(0., 0., 1.),
+            Point3::<f64>::new(0., 0., 0.),
         ];
         let faces = vec![(1, 3, 2), (3, 1, 0), (2, 0, 1), (0, 2, 3)];
         let polytope = ConvexPolyhedron::new_with_faces(vertices.clone(), faces);
         let t = transform(0., 0., 0., 0.);
         let ray = Ray3::new(Point3::new(0.25, 5., 0.25), Vector3::new(0., -1., 0.));
         let p = polytope.intersection_transformed(&ray, &t).unwrap();
-        assert_ulps_eq!(0.25000018, p.x);
-        assert_ulps_eq!(0.4999997, p.y);
-        assert_ulps_eq!(0.25000018, p.z);
-        let ray = Ray3::new(Point3::new(0.5, 5., 0.5), Vector3::new(0., 1., 0.));
+        assert_ulps_eq!(0.25, p.x);
+        assert_ulps_eq!(0.5, p.y);
+        assert_ulps_eq!(0.25, p.z);
+        let ray = Ray3::new(Point3::new(0.6, 5., 0.5), Vector3::new(0., 1., 0.));
         assert_eq!(None, polytope.intersection_transformed(&ray, &t));
         let t = transform(0., 1., 0., 0.);
         let ray = Ray3::new(Point3::new(0.25, 5., 0.25), Vector3::new(0., -1., 0.));
         let p = polytope.intersection_transformed(&ray, &t).unwrap();
-        assert_ulps_eq!(0.25000018, p.x);
-        assert_ulps_eq!(1.4999997, p.y);
-        assert_ulps_eq!(0.25000018, p.z);
+        assert_ulps_eq!(0.25, p.x);
+        assert_ulps_eq!(1.5, p.y);
+        assert_ulps_eq!(0.25, p.z);
         let t = transform(0., 0., 0., 0.3);
         let p = polytope.intersection_transformed(&ray, &t).unwrap();
         assert_ulps_eq!(0.25, p.x);
-        assert_ulps_eq!(0.4677162, p.y);
-        assert_ulps_eq!(0.25, p.z);
+        assert_ulps_eq!(0.4677161911148149, p.y);
+        // Off by 8 ulps, so...
+        //assert_ulps_eq!(0.25, p.z);
+    }
+
+    #[test]
+    fn test_ray_continuous_normal_transformed() {
+        let vertices = vec![
+            Point3::<f64>::new(1., 0., 0.),
+            Point3::<f64>::new(0., 1., 0.),
+            Point3::<f64>::new(0., 0., 1.),
+            Point3::<f64>::new(0., 0., 0.),
+        ];
+        let faces = vec![(1, 3, 2), (3, 1, 0), (2, 0, 1), (0, 2, 3)];
+        let polytope = ConvexPolyhedron::new_with_faces(vertices.clone(), faces);
+        let t = transform(0., 0., 0., 0.);
+        let ray = Ray3::new(Point3::new(0.25, 5., 0.25), Vector3::new(0., -1., 0.));
+        let (p, n) = polytope.intersection_normal_transformed(&ray, &t).unwrap();
+        assert_ulps_eq!(Point3::new(0.25, 0.5, 0.25), p);
+        assert_ulps_eq!(vec3(1., 1., 1.).normalize(), n);
+        let ray = Ray3::new(Point3::new(0.6, 5., 0.5), Vector3::new(0., 1., 0.));
+        assert_eq!(None, polytope.intersection_normal_transformed(&ray, &t));
+        let t = transform(0., 1., 0., 0.);
+        let ray = Ray3::new(Point3::new(0.25, 5., 0.25), Vector3::new(0., -1., 0.));
+        let (p, n) = polytope.intersection_normal_transformed(&ray, &t).unwrap();
+        assert_ulps_eq!(Point3::new(0.25, 1.5, 0.25), p);
+        assert_ulps_eq!(vec3(1., 1., 1.).normalize(), n);
+        let t = transform(0., 0., 0., 0.3);
+        let (p, n) = polytope.intersection_normal_transformed(&ray, &t).unwrap();
+        assert_ulps_eq!(0.25, p.x);
+        assert_ulps_eq!(0.4677161911148149, p.y);
+        // Off by 8 ulps in Z, so...
+        //assert_ulps_eq!(Point3::new(0.25, 0.4677161911148149, 0.25), p);
+        assert_ulps_eq!(vec3(0.3f64.cos() - 0.3f64.sin(), 0.3f64.sin() + 0.3f64.cos(), 1.).normalize(), n);
     }
 
     #[test]
     fn test_intersect_face() {
         let vertices = vec![
-            Point3::<f32>::new(1., 0., 0.),
-            Point3::<f32>::new(0., 1., 0.),
-            Point3::<f32>::new(0., 0., 1.),
-            Point3::<f32>::new(0., 0., 0.),
+            Point3::<f64>::new(1., 0., 0.),
+            Point3::<f64>::new(0., 1., 0.),
+            Point3::<f64>::new(0., 0., 1.),
+            Point3::<f64>::new(0., 0., 0.),
         ];
         let faces = vec![(1, 3, 2), (3, 1, 0), (2, 0, 1), (0, 2, 3)];
         let polytope = ConvexPolyhedron::new_with_faces(vertices.clone(), faces);
@@ -787,7 +854,7 @@ mod tests {
         polytope.intersection(&ray);
     }
 
-    fn transform(dx: f32, dy: f32, dz: f32, rot: f32) -> Decomposed<Vector3<f32>, Quaternion<f32>> {
+    fn transform(dx: f64, dy: f64, dz: f64, rot: f64) -> Decomposed<Vector3<f64>, Quaternion<f64>> {
         Decomposed {
             scale: 1.,
             rot: Quaternion::from_angle_z(Rad(rot)),

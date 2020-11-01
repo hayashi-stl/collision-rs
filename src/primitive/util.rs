@@ -128,7 +128,7 @@ pub(crate) fn cylinder_ray_quadratic_solve<S>(r: &Ray3<S>, radius: S) -> Option<
 where
     S: BaseFloat,
 {
-    let two = S::one() + S::one();
+    let two = S::from(2).unwrap();
 
     let a = r.direction.x * r.direction.x + r.direction.z * r.direction.z;
     let b = two * (r.direction.x * r.origin.x + r.direction.z * r.origin.z);

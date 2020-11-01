@@ -52,14 +52,26 @@ pub trait EPA {
         left_transform: &TL,
         right: &SR,
         right_transform: &TR,
-        _normal_fn: impl FnOnce(&<Self::Point as EuclideanSpace>::Diff, &SL, &TL, &SR, &TR) -> <Self::Point as EuclideanSpace>::Diff,
-        _resolve_dir_fn: impl FnOnce(&<Self::Point as EuclideanSpace>::Diff, &SL, &TL, &SR, &TR) -> <Self::Point as EuclideanSpace>::Diff,
+        _normal_fn: impl FnOnce(
+            &<Self::Point as EuclideanSpace>::Diff,
+            &SL,
+            &TL,
+            &SR,
+            &TR,
+        ) -> <Self::Point as EuclideanSpace>::Diff,
+        _resolve_dir_fn: impl FnOnce(
+            &<Self::Point as EuclideanSpace>::Diff,
+            &SL,
+            &TL,
+            &SR,
+            &TR,
+        ) -> <Self::Point as EuclideanSpace>::Diff,
     ) -> Option<Contact<Self::Point>>
     where
         SL: Primitive<Point = Self::Point>,
         SR: Primitive<Point = Self::Point>,
         TL: Transform<Self::Point>,
-        TR: Transform<Self::Point>
+        TR: Transform<Self::Point>,
     {
         self.process(simplex, left, left_transform, right, right_transform)
     }

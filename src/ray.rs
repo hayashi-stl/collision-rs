@@ -8,6 +8,7 @@ use cgmath::{Point2, Point3};
 use cgmath::{Vector2, Vector3};
 
 use crate::traits::{Continuous, ContinuousTransformed, Discrete, DiscreteTransformed};
+use crate::traits::{ContinuousNormal, ContinuousNormalTransformed};
 
 /// A generic ray starting at `origin` and extending infinitely in
 /// `direction`.
@@ -125,5 +126,32 @@ where
     {
         self.intersection(&ray.transform(transform.inverse_transform().unwrap()))
             .map(|p| transform.transform_point(p))
+    }
+}
+
+impl<P, C> ContinuousNormalTransformed<Ray<P::Scalar, P, P::Diff>> for C
+where
+    C: ContinuousNormal<Ray<P::Scalar, P, P::Diff>, Point = P>,
+    P: EuclideanSpace,
+    P::Diff: InnerSpace,
+    P::Scalar: BaseFloat,
+{
+    type Point = P;
+
+    fn intersection_normal_transformed<T>(
+        &self,
+        ray: &Ray<P::Scalar, P, P::Diff>,
+        transform: &T,
+    ) -> Option<(Self::Point, <Self::Point as EuclideanSpace>::Diff)>
+    where
+        T: Transform<Self::Point>,
+    {
+        self.intersection_normal(&ray.transform(transform.inverse_transform().unwrap()))
+            .map(|(p, n)| {
+                (
+                    transform.transform_point(p),
+                    transform.transform_vector(n).normalize(),
+                )
+            })
     }
 }

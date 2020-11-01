@@ -133,11 +133,25 @@ where
     type Result = Point3<S>;
 
     fn intersection(&self, ray: &Ray3<S>) -> Option<Point3<S>> {
+        self.intersection_normal(ray).map(|(p, _)| p)
+    }
+}
+
+impl<S> ContinuousNormal<Ray3<S>> for Cuboid<S>
+where
+    S: BaseFloat,
+{
+    type Point = Point3<S>;
+
+    fn intersection_normal(
+        &self,
+        ray: &Ray3<S>,
+    ) -> Option<(Self::Point, <Self::Point as EuclideanSpace>::Diff)> {
         Aabb3::new(
             Point3::from_vec(-self.half_dim),
             Point3::from_vec(self.half_dim),
         )
-        .intersection(ray)
+        .intersection_normal(ray)
     }
 }
 
@@ -231,6 +245,17 @@ where
     }
 }
 
+impl<S> ContinuousNormal<Ray3<S>> for Cube<S>
+where
+    S: BaseFloat,
+{
+    type Point = Point3<S>;
+
+    fn intersection_normal(&self, ray: &Ray3<S>) -> Option<(Point3<S>, Vector3<S>)> {
+        self.cuboid.intersection_normal(ray)
+    }
+}
+
 #[cfg(test)]
 mod tests {
 
@@ -308,6 +333,43 @@ mod tests {
     }
 
     #[test]
+    fn test_ray_continuous_normal() {
+        let cuboid = Cuboid::new(10., 10., 10.);
+        let ray = Ray3::new(Point3::new(-10., 0., 0.), Vector3::new(1., 0., 0.));
+        assert_eq!(
+            Some((Point3::new(-5., 0., 0.), vec3(-1., 0., 0.))),
+            cuboid.intersection_normal(&ray)
+        );
+        let ray = Ray3::new(Point3::new(10., 0., 0.), Vector3::new(-1., 0., 0.));
+        assert_eq!(
+            Some((Point3::new(5., 0., 0.), vec3(1., 0., 0.))),
+            cuboid.intersection_normal(&ray)
+        );
+        let ray = Ray3::new(Point3::new(0., -10., 0.), Vector3::new(0., 1., 0.));
+        assert_eq!(
+            Some((Point3::new(0., -5., 0.), vec3(0., -1., 0.))),
+            cuboid.intersection_normal(&ray)
+        );
+        let ray = Ray3::new(Point3::new(0., 10., 0.), Vector3::new(0., -1., 0.));
+        assert_eq!(
+            Some((Point3::new(0., 5., 0.), vec3(0., 1., 0.))),
+            cuboid.intersection_normal(&ray)
+        );
+        let ray = Ray3::new(Point3::new(0., 0., -10.), Vector3::new(0., 0., 1.));
+        assert_eq!(
+            Some((Point3::new(0., 0., -5.), vec3(0., 0., -1.))),
+            cuboid.intersection_normal(&ray)
+        );
+        let ray = Ray3::new(Point3::new(0., 0., 10.), Vector3::new(0., 0., -1.));
+        assert_eq!(
+            Some((Point3::new(0., 0., 5.), vec3(0., 0., 1.))),
+            cuboid.intersection_normal(&ray)
+        );
+        let ray = Ray3::new(Point3::new(10., 0., 0.), Vector3::new(1., 0., 0.));
+        assert_eq!(None, cuboid.intersection_normal(&ray));
+    }
+
+    #[test]
     fn test_ray_continuous_transformed() {
         let cuboid = Cuboid::new(10., 10., 10.);
         let ray = Ray3::new(Point3::new(10., 0., 0.), Vector3::new(-1., 0., 0.));
@@ -324,6 +386,28 @@ mod tests {
         assert_ulps_eq!(5.233758, p.x);
         assert_ulps_eq!(0., p.y);
         assert_ulps_eq!(0., p.z);
+    }
+
+    #[test]
+    fn test_ray_continuous_normal_transformed() {
+        let cuboid = Cuboid::new(10., 10., 10.);
+        let ray = Ray3::new(Point3::new(10., 0., 0.), Vector3::new(-1., 0., 0.));
+        let t = transform(0., 1., 0., 0.);
+        assert_eq!(
+            Some((Point3::new(5., 0., 0.), vec3(1., 0., 0.))),
+            cuboid.intersection_normal_transformed(&ray, &t)
+        );
+        let ray = Ray3::new(Point3::new(10., 0., 0.), Vector3::new(1., 0., 0.));
+        assert_eq!(None, cuboid.intersection_normal_transformed(&ray, &t));
+        let ray = Ray3::new(Point3::new(10., 0., 0.), Vector3::new(-1., 0., 0.));
+        let t = transform(0., 0., 0., 0.3);
+        let p = cuboid.intersection_normal_transformed(&ray, &t).unwrap();
+        assert_ulps_eq!(5.233758, p.0.x);
+        assert_ulps_eq!(0., p.0.y);
+        assert_ulps_eq!(0., p.0.z);
+        assert_ulps_eq!(0.9553365, p.1.x);
+        assert_ulps_eq!(0.2955203, p.1.y);
+        assert_ulps_eq!(0., p.1.z);
     }
 
     // util

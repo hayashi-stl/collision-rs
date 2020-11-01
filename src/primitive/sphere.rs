@@ -88,6 +88,17 @@ where
     type Result = Point3<S>;
 
     fn intersection(&self, r: &Ray3<S>) -> Option<Point3<S>> {
+        self.intersection_normal(r).map(|(p, _)| p)
+    }
+}
+
+impl<S> ContinuousNormal<Ray3<S>> for Sphere<S>
+where
+    S: BaseFloat,
+{
+    type Point = Point3<S>;
+
+    fn intersection_normal(&self, r: &Ray3<S>) -> Option<(Point3<S>, Vector3<S>)> {
         let s = self;
 
         let l = Vector3::new(-r.origin.x, -r.origin.y, -r.origin.z);
@@ -100,7 +111,8 @@ where
             return None;
         }
         let thc = (s.radius * s.radius - d2).sqrt();
-        Some(r.origin + r.direction * (tca - thc))
+        let p = r.origin + r.direction * (tca - thc);
+        Some((p, p.to_vec().normalize()))
     }
 }
 
@@ -109,7 +121,7 @@ mod tests {
     use std;
 
     use approx::assert_ulps_eq;
-    use cgmath::{Decomposed, Point3, Quaternion, Rad, Rotation3, Vector3};
+    use cgmath::{Decomposed, Point3, Quaternion, Rad, Rotation3, Vector3, vec3};
 
     use super::*;
 
@@ -196,6 +208,13 @@ mod tests {
         assert_eq!(None, sphere.intersection(&ray));
         let ray = Ray3::new(Point3::new(20., -15., 0.), Vector3::new(-1., 0., 0.));
         assert_eq!(None, sphere.intersection(&ray));
+    }
+
+    #[test]
+    fn test_ray_continuous_normal() {
+        let sphere = Sphere::new(10.);
+        let ray = Ray3::new(Point3::new(20., 0., 0.), Vector3::new(-1., 0., 0.));
+        assert_eq!(Some((Point3::new(10., 0., 0.), vec3(1., 0., 0.))), sphere.intersection_normal(&ray));
     }
 
     #[test]

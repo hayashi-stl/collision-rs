@@ -240,3 +240,28 @@ where
         }
     }
 }
+
+impl<S> ContinuousNormalTransformed<Ray3<S>> for Primitive3<S>
+where
+    S: BaseFloat,
+{
+    type Point = Point3<S>;
+
+    fn intersection_normal_transformed<T>(&self, ray: &Ray3<S>, transform: &T) -> Option<(Point3<S>, Vector3<S>)>
+    where
+        T: Transform<Point3<S>>,
+    {
+        match *self {
+            Primitive3::Particle(ref _particle) => panic!("Particle intersection_normal not supported"),
+            Primitive3::Quad(ref quad) => quad.intersection_normal_transformed(ray, transform),
+            Primitive3::Sphere(ref sphere) => sphere.intersection_normal_transformed(ray, transform),
+            Primitive3::Cuboid(ref cuboid) => cuboid.intersection_normal_transformed(ray, transform),
+            Primitive3::Cube(ref cuboid) => cuboid.intersection_normal_transformed(ray, transform),
+            Primitive3::Cylinder(ref cylinder) => cylinder.intersection_normal_transformed(ray, transform),
+            Primitive3::Capsule(ref capsule) => capsule.intersection_normal_transformed(ray, transform),
+            Primitive3::ConvexPolyhedron(ref polyhedron) => {
+                polyhedron.intersection_normal_transformed(ray, transform)
+            }
+        }
+    }
+}

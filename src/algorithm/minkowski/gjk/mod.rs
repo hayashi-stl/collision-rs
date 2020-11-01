@@ -366,8 +366,20 @@ where
         left_transform: &TL,
         right: &PR,
         right_transform: &TR,
-        normal_fn: impl FnOnce(&<P as EuclideanSpace>::Diff, &PL, &TL, &PR, &TR) -> <P as EuclideanSpace>::Diff,
-        resolve_dir_fn: impl FnOnce(&<P as EuclideanSpace>::Diff, &PL, &TL, &PR, &TR) -> <P as EuclideanSpace>::Diff,
+        normal_fn: impl FnOnce(
+            &<P as EuclideanSpace>::Diff,
+            &PL,
+            &TL,
+            &PR,
+            &TR,
+        ) -> <P as EuclideanSpace>::Diff,
+        resolve_dir_fn: impl FnOnce(
+            &<P as EuclideanSpace>::Diff,
+            &PL,
+            &TL,
+            &PR,
+            &TR,
+        ) -> <P as EuclideanSpace>::Diff,
     ) -> Option<Contact<P>>
     where
         P: EuclideanSpace<Scalar = S>,
@@ -377,8 +389,15 @@ where
         TR: Transform<P>,
         SP: SimplexProcessor<Point = P>,
     {
-        self.epa
-            .process_ex(&mut simplex, left, left_transform, right, right_transform, normal_fn, resolve_dir_fn)
+        self.epa.process_ex(
+            &mut simplex,
+            left,
+            left_transform,
+            right,
+            right_transform,
+            normal_fn,
+            resolve_dir_fn,
+        )
     }
 
     /// Do intersection testing on the given primitives, and return the contact manifold.
@@ -454,8 +473,20 @@ where
         left_transform: &TL,
         right: &PR,
         right_transform: &TR,
-        normal_fn: impl FnOnce(&<P as EuclideanSpace>::Diff, &PL, &TL, &PR, &TR) -> <P as EuclideanSpace>::Diff,
-        resolve_dir_fn: impl FnOnce(&<P as EuclideanSpace>::Diff, &PL, &TL, &PR, &TR) -> <P as EuclideanSpace>::Diff,
+        normal_fn: impl FnOnce(
+            &<P as EuclideanSpace>::Diff,
+            &PL,
+            &TL,
+            &PR,
+            &TR,
+        ) -> <P as EuclideanSpace>::Diff,
+        resolve_dir_fn: impl FnOnce(
+            &<P as EuclideanSpace>::Diff,
+            &PL,
+            &TL,
+            &PR,
+            &TR,
+        ) -> <P as EuclideanSpace>::Diff,
     ) -> Option<Contact<P>>
     where
         P: EuclideanSpace<Scalar = S>,
@@ -900,19 +931,24 @@ mod tests {
                 Point3::new(3., 3., -1.),
                 Point3::new(3., 3., 3.),
             ],
-            vec![(0, 1, 2), (0, 3, 1), (1, 3, 2), (2, 3, 0)]
+            vec![(0, 1, 2), (0, 3, 1), (1, 3, 2), (2, 3, 0)],
         );
         let right_transform = transform_3d(0., 0., 0., 0.);
         let gjk = GJK3::new();
-        let contact = gjk.intersection(
-            &CollisionStrategy::FullResolution,
-            &left,
-            &left_transform,
-            &right,
-            &right_transform,
-        ).unwrap();
-        assert_ulps_eq!(Vector3::new(1./3f32.sqrt(), 1./3f32.sqrt(), 1./3f32.sqrt()), contact.normal);
-        assert_ulps_eq!(1./3f32.sqrt(), contact.penetration_depth);
+        let contact = gjk
+            .intersection(
+                &CollisionStrategy::FullResolution,
+                &left,
+                &left_transform,
+                &right,
+                &right_transform,
+            )
+            .unwrap();
+        assert_ulps_eq!(
+            Vector3::new(1. / 3f32.sqrt(), 1. / 3f32.sqrt(), 1. / 3f32.sqrt()),
+            contact.normal
+        );
+        assert_ulps_eq!(1. / 3f32.sqrt(), contact.penetration_depth);
         assert_ulps_eq!(Point3::new(2., 2., 2.), contact.contact_point);
     }
 
@@ -927,17 +963,19 @@ mod tests {
                 Point3::new(3., 3., -1.),
                 Point3::new(3., 3., 3.),
             ],
-            vec![(0, 1, 2), (0, 3, 1), (1, 3, 2), (2, 3, 0)]
+            vec![(0, 1, 2), (0, 3, 1), (1, 3, 2), (2, 3, 0)],
         );
         let right_transform = transform_3d(0., 0., 0., 0.);
         let gjk = GJKLeft3::new();
-        let contact = gjk.intersection(
-            &CollisionStrategy::FullResolution,
-            &left,
-            &left_transform,
-            &right,
-            &right_transform,
-        ).unwrap();
+        let contact = gjk
+            .intersection(
+                &CollisionStrategy::FullResolution,
+                &left,
+                &left_transform,
+                &right,
+                &right_transform,
+            )
+            .unwrap();
         assert_eq!(Vector3::new(0., 0., 1.), contact.normal);
     }
 
@@ -952,21 +990,26 @@ mod tests {
                 Point3::new(3., 3., -1.),
                 Point3::new(3., 3., 3.),
             ],
-            vec![(0, 1, 2), (0, 3, 1), (1, 3, 2), (2, 3, 0)]
+            vec![(0, 1, 2), (0, 3, 1), (1, 3, 2), (2, 3, 0)],
         );
         let right_transform = transform_3d(0., 0., 0., 0.);
         let gjk = GJK3::new();
-        let contact = gjk.intersection_ex(
-            &CollisionStrategy::FullResolution,
-            &left,
-            &left_transform,
-            &right,
-            &right_transform,
-            // Y'know, let's resolve the collision to the right this time.
-            |n, _l, _lt, _r, _rt| *n,
-            |_n, _l, _lt, _r, _rt| Vector3::<f32>::new(1., 0., 0.)
-        ).unwrap();
-        assert_ulps_eq!(Vector3::new(1./3f32.sqrt(), 1./3f32.sqrt(), 1./3f32.sqrt()), contact.normal);
+        let contact = gjk
+            .intersection_ex(
+                &CollisionStrategy::FullResolution,
+                &left,
+                &left_transform,
+                &right,
+                &right_transform,
+                // Y'know, let's resolve the collision to the right this time.
+                |n, _l, _lt, _r, _rt| *n,
+                |_n, _l, _lt, _r, _rt| Vector3::<f32>::new(1., 0., 0.),
+            )
+            .unwrap();
+        assert_ulps_eq!(
+            Vector3::new(1. / 3f32.sqrt(), 1. / 3f32.sqrt(), 1. / 3f32.sqrt()),
+            contact.normal
+        );
         assert_ulps_eq!(Vector3::new(1., 0., 0.), contact.resolve_dir);
         assert_ulps_eq!(1., contact.penetration_depth);
         assert_ulps_eq!(Point3::new(2., 2., 2.), contact.contact_point);

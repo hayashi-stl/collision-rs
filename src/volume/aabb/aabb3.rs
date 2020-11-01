@@ -174,30 +174,7 @@ impl<S: BaseFloat> Continuous<Aabb3<S>> for Ray3<S> {
     type Result = Point3<S>;
 
     fn intersection(&self, aabb: &Aabb3<S>) -> Option<Point3<S>> {
-        let ray = self;
-
-        let inv_dir = Vector3::new(S::one(), S::one(), S::one()).div_element_wise(ray.direction);
-
-        let mut t1 = (aabb.min.x - ray.origin.x) * inv_dir.x;
-        let mut t2 = (aabb.max.x - ray.origin.x) * inv_dir.x;
-
-        let mut tmin = t1.min(t2);
-        let mut tmax = t1.max(t2);
-
-        for i in 1..3 {
-            t1 = (aabb.min[i] - ray.origin[i]) * inv_dir[i];
-            t2 = (aabb.max[i] - ray.origin[i]) * inv_dir[i];
-
-            tmin = tmin.max(t1.min(t2));
-            tmax = tmax.min(t1.max(t2));
-        }
-
-        if (tmin < S::zero() && tmax < S::zero()) || tmax < tmin {
-            None
-        } else {
-            let t = if tmin >= S::zero() { tmin } else { tmax };
-            Some(ray.origin + ray.direction * t)
-        }
+        self.intersection_normal(aabb).map(|(p, _)| p)
     }
 }
 
@@ -206,6 +183,71 @@ impl<S: BaseFloat> Continuous<Ray3<S>> for Aabb3<S> {
 
     fn intersection(&self, ray: &Ray3<S>) -> Option<Point3<S>> {
         ray.intersection(self)
+    }
+}
+
+impl<S: BaseFloat> ContinuousNormal<Aabb3<S>> for Ray3<S> {
+    type Point = Point3<S>;
+
+    fn intersection_normal(
+        &self,
+        aabb: &Aabb3<S>,
+    ) -> Option<(Self::Point, <Self::Point as EuclideanSpace>::Diff)> {
+        let ray = self;
+
+        let inv_dir = Vector3::new(S::one(), S::one(), S::one()).div_element_wise(ray.direction);
+
+        let mut tmin = S::neg_infinity();
+        let mut tmax = S::infinity();
+        let mut nmin = Vector3::<S>::zero();
+        let mut nmax = Vector3::<S>::zero();
+        let nvecs = [
+            Vector3::<S>::unit_x(),
+            Vector3::<S>::unit_y(),
+            Vector3::<S>::unit_z(),
+        ];
+
+        for i in 0..3 {
+            let t1 = (aabb.min[i] - ray.origin[i]) * inv_dir[i];
+            let t2 = (aabb.max[i] - ray.origin[i]) * inv_dir[i];
+
+            tmin = tmin.max(t1.min(t2));
+            tmax = tmax.min(t1.max(t2));
+
+            nmin = if tmin == t1 {
+                -nvecs[i]
+            } else if tmin == t2 {
+                nvecs[i]
+            } else {
+                nmin
+            };
+            nmax = if tmax == t1 {
+                -nvecs[i]
+            } else if tmax == t2 {
+                nvecs[i]
+            } else {
+                nmax
+            };
+        }
+
+        if (tmin < S::zero() && tmax < S::zero()) || tmax < tmin {
+            None
+        } else {
+            let t = if tmin >= S::zero() { tmin } else { tmax };
+            let n = if tmin >= S::zero() { nmin } else { nmax };
+            Some((ray.origin + ray.direction * t, n))
+        }
+    }
+}
+
+impl<S: BaseFloat> ContinuousNormal<Ray3<S>> for Aabb3<S> {
+    type Point = Point3<S>;
+
+    fn intersection_normal(
+        &self,
+        ray: &Ray3<S>,
+    ) -> Option<(Self::Point, <Self::Point as EuclideanSpace>::Diff)> {
+        ray.intersection_normal(self)
     }
 }
 

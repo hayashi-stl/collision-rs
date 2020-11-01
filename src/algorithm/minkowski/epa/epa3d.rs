@@ -107,8 +107,20 @@ where
         left_transform: &TL,
         right: &SR,
         right_transform: &TR,
-        normal_fn: impl FnOnce(&<Self::Point as EuclideanSpace>::Diff, &SL, &TL, &SR, &TR) -> <Self::Point as EuclideanSpace>::Diff,
-        resolve_dir_fn: impl FnOnce(&<Self::Point as EuclideanSpace>::Diff, &SL, &TL, &SR, &TR) -> <Self::Point as EuclideanSpace>::Diff,
+        normal_fn: impl FnOnce(
+            &<Self::Point as EuclideanSpace>::Diff,
+            &SL,
+            &TL,
+            &SR,
+            &TR,
+        ) -> <Self::Point as EuclideanSpace>::Diff,
+        resolve_dir_fn: impl FnOnce(
+            &<Self::Point as EuclideanSpace>::Diff,
+            &SL,
+            &TL,
+            &SR,
+            &TR,
+        ) -> <Self::Point as EuclideanSpace>::Diff,
     ) -> Option<Contact<Self::Point>>
     where
         SL: Primitive<Point = Self::Point>,
@@ -470,7 +482,7 @@ fn remove_or_add_edge(edges: &mut Vec<(usize, usize)>, edge: (usize, usize)) {
 #[cfg(test)]
 mod tests {
     use approx::assert_ulps_eq;
-    use cgmath::{Decomposed, Quaternion, Rad, Vector3, vec3};
+    use cgmath::{vec3, Decomposed, Quaternion, Rad, Vector3};
 
     use super::*;
     use crate::primitive::*;
@@ -533,10 +545,19 @@ mod tests {
             sup(0., 0., 5.),
         ];
         let polytope = Polytope::new(&mut simplex);
-        let face = polytope.closest_face_along_direction(
-            vec3(1./26f32.sqrt(), 0., 5./26f32.sqrt())
-        ).unwrap();
-        assert_face(face, 3, 0, 2, 4./21f32.sqrt(), 2./21f32.sqrt(), 1./21f32.sqrt(), 5./21f32.sqrt());
+        let face = polytope
+            .closest_face_along_direction(vec3(1. / 26f32.sqrt(), 0., 5. / 26f32.sqrt()))
+            .unwrap();
+        assert_face(
+            face,
+            3,
+            0,
+            2,
+            4. / 21f32.sqrt(),
+            2. / 21f32.sqrt(),
+            1. / 21f32.sqrt(),
+            5. / 21f32.sqrt(),
+        );
     }
 
     #[test]

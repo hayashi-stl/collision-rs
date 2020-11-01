@@ -175,22 +175,50 @@ where
     type Result = Point3<S>;
 
     fn intersection(&self, r: &Ray3<S>) -> Option<Point3<S>> {
+        self.intersection_normal(r).map(|(p, _)| p)
+    }
+}
+
+impl<S> ContinuousNormal<Ray3<S>> for Cylinder<S>
+where
+    S: BaseFloat,
+{
+    type Point = Point3<S>;
+
+    fn intersection_normal(
+        &self,
+        r: &Ray3<S>,
+    ) -> Option<(Self::Point, <Self::Point as EuclideanSpace>::Diff)> {
+        use cgmath::{vec2, vec3};
+
         if r.direction.x.is_zero() && r.direction.z.is_zero() {
-            if r.direction.y.is_zero() {
+            if r.direction.y.is_zero() || vec2(r.origin.x, r.origin.z).magnitude() > self.radius {
                 return None;
             }
 
             if r.origin.y >= self.half_height && r.direction.y < S::zero() {
-                return Some(Point3::new(S::zero(), self.half_height, S::zero()));
+                return Some((
+                    Point3::new(r.origin.x, self.half_height, r.origin.z),
+                    Vector3::unit_y(),
+                ));
             }
             if r.origin.y >= -self.half_height && r.direction.y < S::zero() {
-                return Some(Point3::new(S::zero(), -self.half_height, S::zero()));
+                return Some((
+                    Point3::new(r.origin.x, -self.half_height, r.origin.z),
+                    -Vector3::unit_y(),
+                ));
             }
             if r.origin.y <= -self.half_height && r.direction.y > S::zero() {
-                return Some(Point3::new(S::zero(), -self.half_height, S::zero()));
+                return Some((
+                    Point3::new(r.origin.x, -self.half_height, r.origin.z),
+                    -Vector3::unit_y(),
+                ));
             }
             if r.origin.y <= self.half_height && r.direction.y > S::zero() {
-                return Some(Point3::new(S::zero(), self.half_height, S::zero()));
+                return Some((
+                    Point3::new(r.origin.x, self.half_height, r.origin.z),
+                    Vector3::unit_y(),
+                ));
             }
 
             return None;
@@ -213,12 +241,21 @@ where
             t1.min(t2)
         };
 
+        // to avoid rounding error at cap collisions
+        let mut hit_cap = false;
+        let mut cap_y = S::zero();
+
+        let mut normal = Vector3::zero();
+
         let n = -Vector3::unit_y();
         let tp = -(self.half_height + r.origin.dot(n)) / r.direction.dot(n);
         if tp >= S::zero() && tp < t {
             let p = r.origin + r.direction * tp;
             if p.x * p.x + p.z * p.z < self.radius * self.radius {
                 t = tp;
+                hit_cap = true;
+                cap_y = self.half_height;
+                normal = Vector3::unit_y();
             }
         }
 
@@ -228,14 +265,23 @@ where
             let p = r.origin + r.direction * tb;
             if p.x * p.x + p.z * p.z < self.radius * self.radius {
                 t = tb;
+                hit_cap = true;
+                cap_y = -self.half_height;
+                normal = -Vector3::unit_y();
             }
         }
 
-        let pc = r.origin + r.direction * t;
+        let mut pc = r.origin + r.direction * t;
+        if hit_cap {
+            pc.y = cap_y;
+        } else {
+            normal = vec3(pc.x, S::zero(), pc.z).normalize();
+        }
+
         if (pc.y > self.half_height) || (pc.y < -self.half_height) {
             None
         } else {
-            Some(pc)
+            Some((pc, normal))
         }
     }
 }
@@ -363,6 +409,31 @@ mod tests {
     }
 
     #[test]
+    fn test_continuous_normal_1a() {
+        let cylinder = Cylinder::new(2., 1.);
+        let ray = Ray3::new(Point3::new(-3., 0., 0.), Vector3::new(1., 0., 0.));
+        assert_eq!(
+            Some((Point3::new(-1., 0., 0.), vec3(-1., 0., 0.))),
+            cylinder.intersection_normal(&ray)
+        );
+    }
+
+    #[test]
+    fn test_continuous_normal_1b() {
+        let cylinder = Cylinder::new(2., 1.);
+        let ray = Ray3::new(Point3::new(-3., 0., 0.5), Vector3::new(4., 1., 0.));
+        if let Some((p, n)) = cylinder.intersection_normal(&ray) {
+            assert_ulps_eq!(
+                Point3::new(-0.75f64.sqrt(), (-0.75f64.sqrt() + 3.) / 4., 0.5),
+                p
+            );
+            assert_ulps_eq!(vec3(-0.75f64.sqrt(), 0., 0.5), n);
+        } else {
+            panic!("Intersection should exist");
+        }
+    }
+
+    #[test]
     fn test_continuous_2() {
         let cylinder = Cylinder::new(2., 1.);
         let ray = Ray3::new(Point3::new(-3., 0., 0.), Vector3::new(-1., 0., 0.));
@@ -377,6 +448,19 @@ mod tests {
             Vector3::new(0.1, -1., 0.1).normalize(),
         );
         assert_eq!(Some(Point3::new(0.1, 2., 0.1)), cylinder.intersection(&ray));
+    }
+
+    #[test]
+    fn test_continuous_normal_3() {
+        let cylinder = Cylinder::new(2., 1.);
+        let ray = Ray3::new(
+            Point3::new(0., 3., 0.),
+            Vector3::new(0.1, -1., 0.1).normalize(),
+        );
+        assert_eq!(
+            Some((Point3::new(0.1, 2., 0.1), vec3(0., 1., 0.))),
+            cylinder.intersection_normal(&ray)
+        );
     }
 
     #[test]
@@ -397,6 +481,68 @@ mod tests {
             Vector3::new(0., -1., 0.).normalize(),
         );
         assert_eq!(Some(Point3::new(0., 2., 0.)), cylinder.intersection(&ray));
+    }
+
+    #[test]
+    fn test_continuous_normal_5_up() {
+        let cylinder = Cylinder::new(2., 1.);
+        let ray = Ray3::new(
+            Point3::new(0., -3., 0.),
+            Vector3::new(0., 1., 0.).normalize(),
+        );
+        assert_eq!(
+            Some((Point3::new(0., -2., 0.), vec3(0., -1., 0.))),
+            cylinder.intersection_normal(&ray)
+        );
+    }
+
+    #[test]
+    fn test_continuous_normal_5_down() {
+        let cylinder = Cylinder::new(2., 1.);
+        let ray = Ray3::new(
+            Point3::new(0., 3., 0.),
+            Vector3::new(0., -1., 0.).normalize(),
+        );
+        assert_eq!(
+            Some((Point3::new(0., 2., 0.), vec3(0., 1., 0.))),
+            cylinder.intersection_normal(&ray)
+        );
+    }
+
+    #[test]
+    fn test_continuous_vertical_off_center_in() {
+        let cylinder = Cylinder::new(2., 1.);
+        let ray = Ray3::new(
+            Point3::new(0.5, 3., -0.25),
+            Vector3::new(0., -1., 0.).normalize(),
+        );
+        assert_eq!(
+            Some(Point3::new(0.5, 2., -0.25)),
+            cylinder.intersection(&ray)
+        );
+    }
+
+    #[test]
+    fn test_continuous_normal_vertical_off_center_in() {
+        let cylinder = Cylinder::new(2., 1.);
+        let ray = Ray3::new(
+            Point3::new(0.5, 3., -0.25),
+            Vector3::new(0., -1., 0.).normalize(),
+        );
+        assert_eq!(
+            Some((Point3::new(0.5, 2., -0.25), vec3(0., 1., 0.))),
+            cylinder.intersection_normal(&ray)
+        );
+    }
+
+    #[test]
+    fn test_continuous_vertical_off_center_out() {
+        let cylinder = Cylinder::new(2., 1.);
+        let ray = Ray3::new(
+            Point3::new(0.5, 3., -1.),
+            Vector3::new(0., -1., 0.).normalize(),
+        );
+        assert_eq!(None, cylinder.intersection(&ray));
     }
 
     // util

@@ -1,6 +1,6 @@
 use cgmath::prelude::*;
 use cgmath::BaseNum;
-use cgmath::{RelativeEq, UlpsEq, BaseFloat};
+use cgmath::{BaseFloat, RelativeEq, UlpsEq};
 
 /// An intersection test with a result.
 ///
@@ -12,6 +12,19 @@ pub trait Continuous<RHS> {
 
     /// Intersection test
     fn intersection(&self, _: &RHS) -> Option<Self::Result>;
+}
+
+/// An intersection test with a (point, normal) result.
+///
+pub trait ContinuousNormal<RHS> {
+    /// Result returned by intersection test is (Point, Point::Diff)
+    type Point: EuclideanSpace;
+
+    /// Intersection test
+    fn intersection_normal(
+        &self,
+        _: &RHS,
+    ) -> Option<(Self::Point, <Self::Point as EuclideanSpace>::Diff)>;
 }
 
 /// A boolean intersection test.
@@ -134,14 +147,16 @@ pub trait Primitive {
         <Self::Point as EuclideanSpace>::Scalar: RelativeEq,
         <Self::Point as EuclideanSpace>::Scalar: UlpsEq,
         <Self::Point as EuclideanSpace>::Scalar: BaseFloat,
-        <Self::Point as EuclideanSpace>::Diff: InnerSpace
+        <Self::Point as EuclideanSpace>::Diff: InnerSpace,
     {
-        transform.transform_vector(self.closest_valid_normal_local(
-            &transform
-                .inverse_transform_vector(*normal)
-                .unwrap_or(*normal)
-                .normalize(),
-        ))
+        transform.transform_vector(
+            self.closest_valid_normal_local(
+                &transform
+                    .inverse_transform_vector(*normal)
+                    .unwrap_or(*normal)
+                    .normalize(),
+            ),
+        )
     }
 
     /// Get the closest valid normal on the shape to a given normal, in local space.
@@ -182,6 +197,22 @@ pub trait ContinuousTransformed<RHS> {
 
     /// Intersection test for transformed self
     fn intersection_transformed<T>(&self, _: &RHS, _: &T) -> Option<Self::Result>
+    where
+        T: Transform<Self::Point>;
+}
+
+/// (point, normal) intersection test on transformed primitive
+pub trait ContinuousNormalTransformed<RHS> {
+    /// Point type for transformation of self
+    /// The result of intersection is (Point, Point::Diff)
+    type Point: EuclideanSpace;
+
+    /// Intersection test for transformed self
+    fn intersection_normal_transformed<T>(
+        &self,
+        _: &RHS,
+        _: &T,
+    ) -> Option<(Self::Point, <Self::Point as EuclideanSpace>::Diff)>
     where
         T: Transform<Self::Point>;
 }

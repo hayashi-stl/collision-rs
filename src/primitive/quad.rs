@@ -127,6 +127,19 @@ where
     }
 }
 
+impl<S> ContinuousNormal<Ray3<S>> for Quad<S>
+where
+    S: BaseFloat,
+{
+    type Point = Point3<S>;
+
+    /// Ray must be in object space of the rectangle
+    fn intersection_normal(&self, ray: &Ray3<S>) -> Option<(Point3<S>, Vector3<S>)> {
+        let aabb: Aabb3<S> = self.compute_bound();
+        aabb.intersection_normal(ray)
+    }
+}
+
 #[cfg(test)]
 mod tests {
 
