@@ -413,7 +413,14 @@ where
             let dot = self.faces[i]
                 .normal
                 .dot(sup.v - self.vertices[self.faces[i].vertices[0]].v);
-            if dot > S::zero() {
+
+            let v0 = self.vertices[self.faces[i].vertices[0]].v - sup.v;
+            let v1 = self.vertices[self.faces[i].vertices[1]].v - sup.v;
+            let v2 = self.vertices[self.faces[i].vertices[2]].v - sup.v;
+
+            if dot > S::zero() &&
+            // Avoid generating degenerate faces
+                v0.cross(v1) != Vector3::zero() && v1.cross(v2) != Vector3::zero() && v2.cross(v0) != Vector3::zero() {
                 let face = self.faces.swap_remove(i);
                 remove_or_add_edge(&mut edges, (face.vertices[0], face.vertices[1]));
                 remove_or_add_edge(&mut edges, (face.vertices[1], face.vertices[2]));
