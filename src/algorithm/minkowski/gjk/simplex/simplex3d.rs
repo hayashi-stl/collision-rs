@@ -90,7 +90,13 @@ where
 
             *v = cross_aba(&ab, &ao);
             if ulps_eq!(*v, Vector3::zero()) {
+                // TODO: Figure out why this is 0.1 and not 1.0
                 v.x = cast(0.1).unwrap();
+                // Vector should not point in the same direction as already checked vectors
+                if ulps_eq!(v.cross(ab), Vector3::zero()) {
+                    v.x = S::zero();
+                    v.y = cast(0.1).unwrap();
+                }
             }
         }
         // 0-1 points
