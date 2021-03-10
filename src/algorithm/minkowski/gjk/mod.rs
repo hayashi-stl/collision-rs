@@ -200,7 +200,7 @@ where
 
         // build simplex and get an initial support point to bootstrap the algorithm
         let mut simplex = Simplex::new();
-        let p = SupportPoint::from_minkowski(
+        let mut p = SupportPoint::from_minkowski(
             left,
             left_transform.start,
             right,
@@ -213,7 +213,7 @@ where
         // if the squared magnitude is small enough, we have a hit and can stop
         while v.magnitude2() > self.continuous_tolerance {
             // get a new support point
-            let p = SupportPoint::from_minkowski(
+            p = SupportPoint::from_minkowski(
                 left,
                 left_transform.start,
                 right,
@@ -249,14 +249,24 @@ where
                 .get_closest_point_to_origin(&mut simplex);
         }
         if v.magnitude2() <= self.continuous_tolerance {
+            let normal = -normal.normalize(); // our convention is normal points from B towards A
+            // Figure out which support point is the contact point
+            let contact_point = if -normal.dot(left.closest_valid_normal(&-normal, left_transform.start)) <
+                normal.dot(right.closest_valid_normal(&normal, right_transform.start))
+            {
+                p.sup_a + (left_transform.end.transform_point(P::origin()) - left_transform.start.transform_point(P::origin())) * lambda
+            } else {
+                p.sup_b + (right_transform.end.transform_point(P::origin()) - right_transform.start.transform_point(P::origin())) * lambda
+            };
+
             let transform = right_transform
                 .start
                 .translation_interpolate(right_transform.end, lambda);
             let mut contact = Contact::new_with_point(
                 CollisionStrategy::FullResolution,
-                -normal.normalize(), // our convention is normal points from B towards A
+                normal, 
                 v.magnitude(),       // will always be very close to zero
-                transform.transform_point(ray_origin),
+                contact_point,
             );
             contact.time_of_impact = lambda;
             Some(contact)
@@ -714,9 +724,7 @@ where
 #[cfg(test)]
 mod tests {
     use approx::assert_ulps_eq;
-    use cgmath::{
-        Basis2, Decomposed, Point2, Point3, Quaternion, Rad, Rotation2, Rotation3, Vector2, Vector3,
-    };
+    use cgmath::{Basis2, Decomposed, Point2, Point3, Quaternion, Rad, Rotation2, Rotation3, Vector2, Vector3, vec2};
 
     use super::*;
     use crate::primitive::*;
@@ -1196,7 +1204,7 @@ mod tests {
         assert_ulps_eq!(0.1666667, contact.time_of_impact);
         assert_eq!(Vector2::new(-1., 0.), contact.normal);
         assert_eq!(0., contact.penetration_depth);
-        assert_eq!(Point2::new(10., 0.), contact.contact_point);
+        assert_eq!(10., contact.contact_point.x);
 
         assert!(gjk
             .intersection_time_of_impact(
@@ -1206,6 +1214,85 @@ mod tests {
                 &right_transform..&right_transform
             )
             .is_none());
+    }
+
+    #[test]
+    fn test_gjk_time_of_impact_2d_regression() {
+        let c1 = Circle::new(1.0);
+        let c2 = Circle::new(2.0);
+    
+        let c1_t0 = Decomposed { scale: 1.0, rot: Basis2::one(), disp: vec2(0.0, 0.0) };
+        let c1_t1 = Decomposed { scale: 1.0, rot: Basis2::one(), disp: vec2(0.0, 0.0) };
+        let c2_t0 = Decomposed { scale: 1.0, rot: Basis2::one(), disp: vec2(6.0, 0.0) };
+        let c2_t1 = Decomposed { scale: 1.0, rot: Basis2::one(), disp: vec2(0.0, 0.0) };
+
+        let gjk = GJK2::new();
+
+        let contact = gjk
+            .intersection_time_of_impact(
+                &c1,
+                &c1_t0..&c1_t1,
+                &c2,
+                &c2_t0..&c2_t1,
+            )
+            .unwrap();
+
+        assert_ulps_eq!(0.5, contact.time_of_impact);
+        assert_eq!(Vector2::new(-1., 0.), contact.normal);
+        assert_eq!(0., contact.penetration_depth);
+        assert_eq!(Point2::new(1., 0.), contact.contact_point);
+    }
+
+    #[test]
+    fn test_gjk_time_of_impact_2d_corner_hit_1() {
+        // Test to make sure the correct support point is chosen
+        let left = Rectangle::new(2.0, 2.0);
+        let left_start_transform = transform(0., 0., 0.);
+        let left_end_transform = transform(0., 0., 0.);
+        let right = Rectangle::new(8f32.sqrt(), 8f32.sqrt());
+        let right_start_transform = transform(2., 5., std::f32::consts::TAU / 8.);
+        let right_end_transform = transform(2., 1., std::f32::consts::TAU / 8.);
+
+        let gjk = GJK2::new();
+
+        let contact = gjk
+            .intersection_time_of_impact(
+                &left,
+                &left_start_transform..&left_end_transform,
+                &right,
+                &right_start_transform..&right_end_transform,
+            )
+            .unwrap();
+
+        assert_ulps_eq!(0.75, contact.time_of_impact, max_ulps = 8);
+        assert_ulps_eq!(Vector2::new(-0.5f32.sqrt(), -0.5f32.sqrt()), contact.normal, max_ulps = 12);
+        assert_eq!(Point2::new(1., 1.), contact.contact_point);
+    }
+
+    #[test]
+    fn test_gjk_time_of_impact_2d_corner_hit_2() {
+        // Test to make sure the correct support point is chosen
+        let left = Rectangle::new(2.0, 2.0);
+        let left_start_transform = transform(0., 0., 0.);
+        let left_end_transform = transform(0., 0., 0.);
+        let right = Rectangle::new(8f32.sqrt(), 8f32.sqrt());
+        let right_start_transform = transform(2., 5., std::f32::consts::TAU / 8.);
+        let right_end_transform = transform(2., 1., std::f32::consts::TAU / 8.);
+
+        let gjk = GJK2::new();
+
+        let contact = gjk
+            .intersection_time_of_impact(
+                &right,
+                &right_start_transform..&right_end_transform,
+                &left,
+                &left_start_transform..&left_end_transform,
+            )
+            .unwrap();
+
+        assert_ulps_eq!(0.75, contact.time_of_impact, max_ulps = 8);
+        assert_ulps_eq!(Vector2::new(0.5f32.sqrt(), 0.5f32.sqrt()), contact.normal, max_ulps = 12);
+        assert_eq!(Point2::new(1., 1.), contact.contact_point);
     }
 
     #[test]
