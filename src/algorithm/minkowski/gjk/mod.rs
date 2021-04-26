@@ -210,8 +210,12 @@ where
         // we only need the actual support point for this
         let mut v = p.v;
 
-        // if the squared magnitude is small enough, we have a hit and can stop
-        while v.magnitude2() > self.continuous_tolerance {
+        for _ in 0..self.max_iterations {
+            // if the squared magnitude is small enough, we have a hit and can stop
+            if v.magnitude2() <= self.continuous_tolerance {
+                break;
+            }
+
             // get a new support point
             p = SupportPoint::from_minkowski(
                 left,
