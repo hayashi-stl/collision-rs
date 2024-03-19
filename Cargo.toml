@@ -32,7 +32,6 @@ keywords = ["gamedev", "cgmath", "collision"]
 name = "collision"
 
 [dependencies]
-rand = "0.6"
 approx = "0.3" # Only for the macros; for all other instances use the re-exported cgmath ones.
 cgmath = "0.17"
 serde = { version = "1.0", optional = true, features = ["derive"] }
@@ -43,8 +42,11 @@ smallvec = "0.6.1"
 cgmath = { version = "0.17", features = ["serde"] }
 num = { version = "0.2", features = ["serde"] }
 
-[dev-dependencies]
-genmesh = "0.5"
+[target.'cfg(not(target_family = "wasm"))'.dependencies]
+rand = "0.6"
 
 [target.'cfg(target_family = "wasm")'.dependencies]
-getrandom = { version = "0.2", features = ["js"] }
+rand = { version = "0.6", features = ["wasm-bindgen"] }
+
+[dev-dependencies]
+genmesh = "0.5"
