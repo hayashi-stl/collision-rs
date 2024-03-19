@@ -46,3 +46,5 @@ num = { version = "0.2", features = ["serde"] }
 [dev-dependencies]
 genmesh = "0.5"
 
+[target.'cfg(target_family = "wasm")'.dependencies]
+getrandom = { version = "0.2", features = ["js"] }
