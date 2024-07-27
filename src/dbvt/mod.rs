@@ -490,6 +490,7 @@ where
         let mut stack_pointer = 1;
         let mut values = Vec::default();
         let mut max_stack_pointer = stack_pointer;
+        console_log!("Height: {}", self.height());
         while stack_pointer > 0 {
             // depth search, use last added as next test subject
             stack_pointer -= 1;
@@ -518,7 +519,6 @@ where
                 Node::Nil => (),
             }
         }
-        console_log!("Max stack pointer: {}", max_stack_pointer);
         values
     }
 
