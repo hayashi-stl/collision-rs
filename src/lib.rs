@@ -3,7 +3,6 @@
 #![deny(
     missing_docs,
     trivial_casts,
-    unsafe_code,
     unstable_features,
     unused_import_braces,
     unused_qualifications
@@ -27,6 +26,7 @@ extern crate rand;
 extern crate serde;
 #[cfg_attr(test, macro_use)]
 extern crate smallvec;
+use wasm_bindgen::prelude::*;
 
 // Re-exports
 
@@ -54,3 +54,17 @@ mod plane;
 mod ray;
 mod traits;
 mod volume;
+
+/// Logs to the console.
+#[macro_export]
+macro_rules! console_log {
+    ($($t:tt)*) => {
+        $crate::log(&format_args!($($t)*).to_string())
+    };
+}
+
+#[wasm_bindgen]
+extern "C" {
+    #[wasm_bindgen(js_namespace = console)]
+    fn log(s: &str);
+}

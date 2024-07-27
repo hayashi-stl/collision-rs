@@ -98,6 +98,7 @@ use cgmath::num_traits::NumCast;
 use rand;
 use rand::Rng;
 
+use crate::console_log;
 use crate::prelude::*;
 
 mod util;
@@ -488,6 +489,7 @@ where
         stack[0] = self.root_index;
         let mut stack_pointer = 1;
         let mut values = Vec::default();
+        let mut max_stack_pointer = stack_pointer;
         while stack_pointer > 0 {
             // depth search, use last added as next test subject
             stack_pointer -= 1;
@@ -510,11 +512,13 @@ where
                         stack[stack_pointer] = branch.left;
                         stack[stack_pointer + 1] = branch.right;
                         stack_pointer += 2;
+                        max_stack_pointer = stack_pointer.max(max_stack_pointer);
                     }
                 }
                 Node::Nil => (),
             }
         }
+        console_log!("Max stack pointer: {}", max_stack_pointer);
         values
     }
 
