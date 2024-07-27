@@ -484,14 +484,10 @@ where
     where
         V: Visitor<Bound = T::Bound>,
     {
-        let mut stack = [0; 256];
-        stack[0] = self.root_index;
-        let mut stack_pointer = 1;
+        let mut stack = vec![self.root_index];
         let mut values = Vec::default();
-        while stack_pointer > 0 {
+        while let Some(node_index) = stack.pop() {
             // depth search, use last added as next test subject
-            stack_pointer -= 1;
-            let node_index = stack[stack_pointer];
             let node = &self.nodes[node_index];
 
             match *node {
@@ -507,9 +503,8 @@ where
                 // branch intersected
                 Node::Branch(ref branch) => {
                     if visitor.accept(&branch.bound, false).is_some() {
-                        stack[stack_pointer] = branch.left;
-                        stack[stack_pointer + 1] = branch.right;
-                        stack_pointer += 2;
+                        stack.push(branch.left);
+                        stack.push(branch.right);
                     }
                 }
                 Node::Nil => (),
